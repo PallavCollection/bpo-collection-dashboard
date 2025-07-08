@@ -1,1 +1,1 @@
-# bpo-collection-dashboard
+Deploy-ready Streamlit dashboard + email alert setup
