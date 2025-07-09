@@ -1,3 +1,4 @@
+# Your original import section remains unchanged
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -79,36 +80,39 @@ else:
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
-    if is_editor:
-        num_processes = st.sidebar.number_input("Number of Processes", min_value=1, max_value=10, value=2)
-    else:
-        num_processes = 1
+    num_processes = 2 if is_editor else 1  # View-only mode has 1 fixed process
 
     process_data = {}
 
-    for i in range(int(num_processes)):
+    for i in range(num_processes):
         st.sidebar.markdown("---")
         st.sidebar.subheader(f"📂 Process {i+1}")
-        process_name = st.sidebar.text_input(f"Process {i+1} Name", value=f"Process_{i+1}", disabled=not is_editor)
+        process_name = f"Process_{i+1}"  # Fixed for viewers
 
-        alloc_files = st.sidebar.file_uploader(
-            f"📁 Allocation Files", type=["xlsx"], accept_multiple_files=True,
-            key=f"alloc_{i}", disabled=not is_editor)
+        if is_editor:
+            process_name = st.sidebar.text_input(f"Process {i+1} Name", value=f"Process_{i+1}")
 
-        paid_current_files = st.sidebar.file_uploader(
-            f"📅 Current Month Paid Files", type=["xlsx"], accept_multiple_files=True,
-            key=f"paid_current_{i}", disabled=not is_editor)
+            alloc_files = st.sidebar.file_uploader(
+                f"📁 Allocation Files", type=["xlsx"], accept_multiple_files=True,
+                key=f"alloc_{i}")
 
-        paid_prev_files = st.sidebar.file_uploader(
-            f"🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
-            key=f"paid_prev_{i}", disabled=not is_editor)
+            paid_current_files = st.sidebar.file_uploader(
+                f"📅 Current Month Paid Files", type=["xlsx"], accept_multiple_files=True,
+                key=f"paid_current_{i}")
 
-        # Load cached data if files not uploaded
+            paid_prev_files = st.sidebar.file_uploader(
+                f"🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
+                key=f"paid_prev_{i}")
+        else:
+            st.sidebar.info("View-only mode enabled. Upload disabled.")
+            alloc_files = paid_current_files = paid_prev_files = None
+
+        # File paths for caching
         alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
         paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
         paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
 
-        if alloc_files:
+        if is_editor and alloc_files:
             df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
             df_alloc.to_csv(alloc_path, index=False)
         elif os.path.exists(alloc_path):
@@ -116,7 +120,7 @@ else:
         else:
             df_alloc = pd.DataFrame()
 
-        if paid_current_files:
+        if is_editor and paid_current_files:
             df_paid_current = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_current_files], ignore_index=True)
             df_paid_current.to_csv(paid_current_path, index=False)
         elif os.path.exists(paid_current_path):
@@ -124,7 +128,7 @@ else:
         else:
             df_paid_current = pd.DataFrame()
 
-        if paid_prev_files:
+        if is_editor and paid_prev_files:
             df_paid_prev = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_prev_files], ignore_index=True)
             df_paid_prev.to_csv(paid_prev_path, index=False)
         elif os.path.exists(paid_prev_path):
@@ -183,8 +187,7 @@ else:
         if not df_current.empty and 'Payment_Date' in df_current:
             st.markdown("### 📅 Daily Payment Trend (Current Month)")
             trend = df_current.groupby('Payment_Date')['Paid_Amount'].sum().reset_index()
-            fig = px.line(trend, x='Payment_Date', y='Paid_Amount', markers=True,
-                          title='Daily Payments', color_discrete_sequence=['navy'])
+            fig = px.line(trend, x='Payment_Date', y='Paid_Amount', markers=True, title='Daily Payments', color_discrete_sequence=['navy'])
             st.plotly_chart(fig, use_container_width=True)
 
         with st.expander("📋 View All Time Data"):
