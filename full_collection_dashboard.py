@@ -60,11 +60,9 @@ if 'authenticated' not in st.session_state:
 
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
-    st.info("Don’t have password? Click Login for view-only")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
     login_btn = st.button("Login")
-    view_only_btn = st.button("Continue without login (view only)")
 
     if login_btn:
         if authenticate_user(email, password):
@@ -76,29 +74,20 @@ if not st.session_state.authenticated:
             st.rerun()
         else:
             st.error("❌ Invalid credentials. View-only mode enabled.")
-            st.session_state.authenticated = True
-            st.session_state.user_email = ""
-            st.rerun()
-    elif view_only_btn:
-        st.session_state.authenticated = True
-        st.session_state.user_email = ""
-        st.success("✅ View-only mode activated.")
-        st.rerun()
 else:
     st.set_page_config(page_title="✨ Beautiful Collection Dashboard", layout="wide")
     st.markdown("<h1 style='text-align: center; color: navy;'>📊 Collection BPO Dashboard</h1>", unsafe_allow_html=True)
 
-    # ✅ Identify admin
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
-    num_processes = 2 if is_editor else 1  # View-only mode has 1 process
+    num_processes = 2 if is_editor else 1  # View-only mode has 1 fixed process
 
     process_data = {}
 
     for i in range(num_processes):
         st.sidebar.markdown("---")
         st.sidebar.subheader(f"📂 Process {i+1}")
-        process_name = f"Process_{i+1}"
+        process_name = f"Process_{i+1}"  # Fixed for viewers
 
         if is_editor:
             process_name = st.sidebar.text_input(f"Process {i+1} Name", value=f"Process_{i+1}")
@@ -115,15 +104,14 @@ else:
                 f"🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
                 key=f"paid_prev_{i}")
         else:
-            st.sidebar.info("👀 View-only mode: upload disabled.")
+            st.sidebar.info("View-only mode enabled. Upload disabled.")
             alloc_files = paid_current_files = paid_prev_files = None
 
-        # File paths
+        # File paths for caching
         alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
         paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
         paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
 
-        # Load or cache data
         if is_editor and alloc_files:
             df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
             df_alloc.to_csv(alloc_path, index=False)
@@ -222,26 +210,6 @@ else:
                           barmode='group', title='Allocated vs Paid by Bucket',
                           color_discrete_sequence=['#1f77b4', '#2ca02c'])
             st.plotly_chart(fig2, use_container_width=True)
-
-        # --- Delete single file type feature (only for admin)
-        if is_editor:
-            st.markdown("## 🗑 Delete Uploaded Data (Single Type)")
-            selected_process_del = st.selectbox("📍 Select Process to Delete File Type", list(process_data.keys()))
-            file_type = st.radio("Select file type to delete:",
-                                 ["Allocation Files", "Current Month Paid Files", "Previous Months Paid Files"])
-
-            if st.button("🧹 Delete Selected File Type"):
-                delete_map = {
-                    "Allocation Files": f"{CACHE_DIR}/alloc_{selected_process_del}.csv",
-                    "Current Month Paid Files": f"{CACHE_DIR}/paid_current_{selected_process_del}.csv",
-                    "Previous Months Paid Files": f"{CACHE_DIR}/paid_prev_{selected_process_del}.csv"
-                }
-                file_path = delete_map.get(file_type)
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    st.success(f"✅ Deleted {file_type} for {selected_process_del}")
-                else:
-                    st.warning("⚠️ File not found or already deleted.")
     else:
         st.info("👈 Please upload allocation & paid files process-wise to view dashboard.")
 
