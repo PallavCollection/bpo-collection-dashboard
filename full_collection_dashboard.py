@@ -80,7 +80,17 @@ else:
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
-    num_processes = 2 if is_editor else 1
+    # --- Dynamic process count ---
+    if 'num_processes' not in st.session_state:
+        st.session_state.num_processes = 2 if is_editor else 1
+
+    num_processes = st.session_state.num_processes
+
+    # ➕ Add Process button in sidebar (only for editor)
+    if is_editor:
+        if st.sidebar.button("➕ Add Process"):
+            st.session_state.num_processes += 1
+            st.experimental_rerun()
 
     process_data = {}
 
