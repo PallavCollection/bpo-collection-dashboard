@@ -57,6 +57,10 @@ else:
         st.session_state.processes = {}
 
     # --- Process Selector (top) ---
+# Handle redirect to newly created process
+if st.session_state.get("just_created"):
+    selected_process = st.session_state["selected_process"]
+    st.session_state["just_created"] = False
     selected_process = st.selectbox("📍 Select or Create Process", ["➕ Add New Process"] + list(st.session_state.processes.keys()))
 
     if selected_process == "➕ Add New Process":
@@ -64,12 +68,13 @@ else:
             new_process_name = st.text_input("🔤 Enter new process name")
             submitted = st.form_submit_button("➕ Create")
             if submitted and new_process_name:
-                st.session_state.processes[new_process_name] = {
-                    'alloc_files': [],
-                    'paid_current_files': [],
-                    'paid_prev_files': []
-                }
-                st.experimental_rerun()
+    st.session_state.processes[new_process_name] = {
+        'alloc_files': [],
+        'paid_current_files': [],
+        'paid_prev_files': []
+    }
+    st.session_state["selected_process"] = new_process_name
+    st.session_state["just_created"] = True
     else:
         process_data = st.session_state.processes[selected_process]
 
