@@ -174,10 +174,12 @@ else:
         col4.metric("📈 Recovery % (All Time)", f"{recovery_all}%")
 
         with st.expander("📋 View Current Month Data"):
-            st.dataframe(df_current)
+            if st.button("👁 View Current Month Data"):
+                st.dataframe(df_current)
 
         with st.expander("📋 View All Time Data"):
-            st.dataframe(df_all)
+            if st.button("👁 View All Time Data"):
+                st.dataframe(df_all)
 
         st.markdown("### 📦 Bucket-wise Recovery (All Time)")
         if 'Bucket' in df_all.columns:
