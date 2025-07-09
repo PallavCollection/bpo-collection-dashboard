@@ -1,4 +1,4 @@
-# Your original import section remains unchanged
+# --- Your original import section remains unchanged
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -60,9 +60,20 @@ if 'authenticated' not in st.session_state:
 
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
+    st.markdown(
+        "<p style='color: grey;'>"
+        "🔑 Enter your admin email & password to upload/delete files.<br>"
+        "👀 <b>Or click below to continue in view-only mode.</b>"
+        "</p>",
+        unsafe_allow_html=True
+    )
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
-    login_btn = st.button("Login")
+    col_login, col_viewonly = st.columns(2)
+    with col_login:
+        login_btn = st.button("🔑 Login")
+    with col_viewonly:
+        viewonly_btn = st.button("👀 Continue without login")
 
     if login_btn:
         if authenticate_user(email, password):
@@ -74,44 +85,45 @@ if not st.session_state.authenticated:
             st.rerun()
         else:
             st.error("❌ Invalid credentials. View-only mode enabled.")
+    elif viewonly_btn:
+        st.session_state.authenticated = True
+        st.session_state.user_email = "view_only"
+        st.info("✅ You are now in view-only mode.")
+        st.rerun()
+
 else:
     st.set_page_config(page_title="✨ Beautiful Collection Dashboard", layout="wide")
     st.markdown("<h1 style='text-align: center; color: navy;'>📊 Collection BPO Dashboard</h1>", unsafe_allow_html=True)
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
-
-    num_processes = 2 if is_editor else 1  # View-only mode has 1 fixed process
+    num_processes = 2 if is_editor else 1
 
     process_data = {}
 
     for i in range(num_processes):
         st.sidebar.markdown("---")
         st.sidebar.subheader(f"📂 Process {i+1}")
-        process_name = f"Process_{i+1}"  # Fixed for viewers
+        process_name = f"Process_{i+1}"
 
         if is_editor:
             process_name = st.sidebar.text_input(f"Process {i+1} Name", value=f"Process_{i+1}")
 
             alloc_files = st.sidebar.file_uploader(
-                f"📁 Allocation Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"alloc_{i}")
-
+                f"📁 Allocation Files", type=["xlsx"], accept_multiple_files=True, key=f"alloc_{i}")
             paid_current_files = st.sidebar.file_uploader(
-                f"📅 Current Month Paid Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"paid_current_{i}")
-
+                f"📅 Current Month Paid Files", type=["xlsx"], accept_multiple_files=True, key=f"paid_current_{i}")
             paid_prev_files = st.sidebar.file_uploader(
-                f"🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"paid_prev_{i}")
+                f"🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True, key=f"paid_prev_{i}")
         else:
             st.sidebar.info("View-only mode enabled. Upload disabled.")
             alloc_files = paid_current_files = paid_prev_files = None
 
-        # File paths for caching
+        # File paths
         alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
         paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
         paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
 
+        # Load data
         if is_editor and alloc_files:
             df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
             df_alloc.to_csv(alloc_path, index=False)
@@ -153,6 +165,34 @@ else:
 
             process_data[process_name] = {'all': df_all, 'current': df_current}
 
+    # --- Delete buttons section ---
+if is_editor:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("🗑 **Delete Uploaded Data**")
+    if process_data:  # only show if there is data
+        selected_proc = st.sidebar.selectbox("Select process", list(process_data.keys()))
+        del_type = st.sidebar.radio("Select file type to delete:",
+            ["Allocation Files", "Current Month Paid Files", "Previous Months Paid Files"])
+        if st.sidebar.button("❌ Delete Selected File"):
+            delete_map = {
+                "Allocation Files": f"{CACHE_DIR}/alloc_{selected_proc}.csv",
+                "Current Month Paid Files": f"{CACHE_DIR}/paid_current_{selected_proc}.csv",
+                "Previous Months Paid Files": f"{CACHE_DIR}/paid_prev_{selected_proc}.csv"
+            }
+            path = delete_map[del_type]
+            if os.path.exists(path):
+                os.remove(path)
+                st.sidebar.success(f"✅ Deleted: {del_type}")
+            else:
+                st.sidebar.info("No file to delete.")
+else:
+    st.sidebar.info("👀 View-only mode: Delete option hidden.")
+
+    # --- Share link info ---
+    st.markdown("---")
+    st.info("🔗 *To share view-only mode with others, share your Streamlit app link and tell them to click* **Continue without login**.")
+
+    # --- Dashboard section ---
     if process_data:
         selected_process = st.selectbox("📍 *Select Process to View Report*", list(process_data.keys()))
         data = process_data[selected_process]
@@ -174,109 +214,8 @@ else:
         col3.metric("🟩 Paid - Current Month", f"₹{total_paid_current:,.0f}")
         col4.metric("📈 Recovery % (All Time)", f"{recovery_all}%")
 
-        with st.expander("📋 View Current Month Data"):
-            st.dataframe(df_current)
-            if not df_current.empty:
-                csv = df_current.to_csv(index=False).encode('utf-8')
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    df_current.to_excel(writer, index=False)
-                st.download_button("⬇ Download CSV", data=csv, file_name=f"{selected_process}_current.csv", mime='text/csv')
-                st.download_button("⬇ Download Excel", data=excel_buffer.getvalue(), file_name=f"{selected_process}_current.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-        if not df_current.empty and 'Payment_Date' in df_current:
-            st.markdown("### 📅 Daily Payment Trend (Current Month)")
-            trend = df_current.groupby('Payment_Date')['Paid_Amount'].sum().reset_index()
-            fig = px.line(trend, x='Payment_Date', y='Paid_Amount', markers=True, title='Daily Payments', color_discrete_sequence=['navy'])
-            st.plotly_chart(fig, use_container_width=True)
-
-        with st.expander("📋 View All Time Data"):
-            st.dataframe(df_all)
-            if not df_all.empty:
-                csv_all = df_all.to_csv(index=False).encode('utf-8')
-                excel_all_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_all_buffer, engine='xlsxwriter') as writer:
-                    df_all.to_excel(writer, index=False)
-                st.download_button("⬇ Download CSV (All)", data=csv_all, file_name=f"{selected_process}_all.csv", mime='text/csv')
-                st.download_button("⬇ Download Excel (All)", data=excel_all_buffer.getvalue(), file_name=f"{selected_process}_all.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-        st.markdown("### 📦 Bucket-wise Recovery (All Time)")
-        if 'Bucket' in df_all.columns:
-            bucket_summary = df_all.groupby('Bucket').agg({
-                'Allocated_Amount': 'sum', 'Paid_Amount': 'sum'
-            }).reset_index()
-            bucket_summary['Recovery %'] = (bucket_summary['Paid_Amount'] / bucket_summary['Allocated_Amount'] * 100).round(2)
-            fig2 = px.bar(bucket_summary, x='Bucket', y=['Allocated_Amount', 'Paid_Amount'],
-                          barmode='group', title='Allocated vs Paid by Bucket',
-                          color_discrete_sequence=['#1f77b4', '#2ca02c'])
-            st.plotly_chart(fig2, use_container_width=True)
-    else:
-        st.info("👈 Please upload allocation & paid files process-wise to view dashboard.")
-
     if st.button("🔓 Logout"):
         st.session_state.authenticated = False
         if os.path.exists(SESSION_FILE):
             os.remove(SESSION_FILE)
         st.rerun()
-# --- Delete single file type feature ---
-st.markdown("---")
-st.markdown("### 🗑️ Delete Uploaded Data (Single Type)")
-
-# Build process list dynamically from cached files
-existing_processes = set()
-for filename in os.listdir(CACHE_DIR):
-    if filename.endswith(".csv"):
-        parts = filename.replace(".csv", "").split("_")
-        if len(parts) > 1:
-            process_name = "_".join(parts[1:])
-            existing_processes.add(process_name)
-
-if existing_processes:
-    selected_process = st.selectbox(
-        "📍 Select Process to Delete File Type",
-        sorted(existing_processes),
-        key="del_process"
-    )
-
-    del_option = st.radio(
-        "Select file type to delete:",
-        ("Allocation Files", "Current Month Paid Files", "Previous Months Paid Files"),
-        key="del_option"
-    )
-
-    if st.button("🧹 Delete Selected File Type"):
-        prefix_map = {
-            "Allocation Files": "alloc_",
-            "Current Month Paid Files": "paid_current_",
-            "Previous Months Paid Files": "paid_prev_"
-        }
-        prefix = prefix_map[del_option]
-        file_path = os.path.join(CACHE_DIR, f"{prefix}{selected_process}.csv")
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            st.success(f"✅ Deleted: {del_option} for '{selected_process}'")
-        else:
-            st.info(f"ℹ️ No file found for: {del_option} of '{selected_process}'")
-        st.rerun()
-else:
-    st.info("ℹ️ No uploaded data found yet to delete.")
-# Show delete section only for editor & if authenticated
-if st.session_state.authenticated and is_editor:
-    st.markdown("## 🗑 Delete Uploaded Data (Single Type)")
-    selected_process_del = st.selectbox("📍 Select Process to Delete File Type", list(process_data.keys()))
-
-    file_type = st.radio("Select file type to delete:",
-                         ["Allocation Files", "Current Month Paid Files", "Previous Months Paid Files"])
-
-    if st.button("🧹 Delete Selected File Type"):
-        delete_map = {
-            "Allocation Files": f"{CACHE_DIR}/alloc_{selected_process_del}.csv",
-            "Current Month Paid Files": f"{CACHE_DIR}/paid_current_{selected_process_del}.csv",
-            "Previous Months Paid Files": f"{CACHE_DIR}/paid_prev_{selected_process_del}.csv"
-        }
-        file_path = delete_map.get(file_type)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            st.success(f"✅ Deleted {file_type} for {selected_process_del}")
-        else:
-            st.warning("⚠️ File not found or already deleted.")
