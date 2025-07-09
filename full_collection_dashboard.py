@@ -1,4 +1,4 @@
-import streamlit as st
+""import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
@@ -104,6 +104,14 @@ else:
             if config['process_count'] > 1 and st.button("➖ Remove Process"):
                 config['process_count'] -= 1
                 save_config(config)
+
+    # Agent performance file upload
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("👤 Upload Agent Performance")
+    agent_file = st.sidebar.file_uploader("Upload Agent Performance Excel", type=["xlsx"])
+    if agent_file:
+        agent_df = pd.read_excel(agent_file)
+        agent_df = clean_headers(agent_df)
 
     process_data = {}
 
@@ -213,67 +221,43 @@ else:
                          barmode='group', title='Allocated vs Paid by Bucket',
                          color_discrete_sequence=['#1f77b4', '#2ca02c'])
             st.plotly_chart(fig2, use_container_width=True)
-    else:
-        st.info("👈 Please upload data for at least one process to view dashboard.")
-        # Your existing code setup remains unchanged above...
 
-# ---- Agent Performance Export & Drill-Down Section ----
-if "agent_df" in locals() and not agent_df.empty:
-    st.markdown("### 📤 Export Agent Performance Report")
-    
-    # Excel Export
-    excel_buffer = io.BytesIO()
-    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-        agent_df.to_excel(writer, index=False, sheet_name="Agent_Performance")
-    st.download_button("⬇️ Download Excel", data=excel_buffer.getvalue(),
-                       file_name="agent_performance.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    # ---- Agent Performance Dashboard ----
+    if 'agent_df' in locals() and not agent_df.empty:
+        st.markdown("## 👤 Agent Performance Dashboard")
 
-    # PDF Export (Table image -> PDF)
-    try:
-        import matplotlib.pyplot as plt
-        import pdfkit
-        import tempfile
+        # Filter section
+        weeks = sorted(agent_df['Week'].dropna().unique())
+        selected_week = st.selectbox("📆 Filter by Week", weeks)
 
-        fig, ax = plt.subplots(figsize=(12, len(agent_df) * 0.5))
-        ax.axis('off')
-        table = ax.table(cellText=agent_df.values,
-                         colLabels=agent_df.columns,
-                         loc='center', cellLoc='center')
-        plt.tight_layout()
+        filtered_df = agent_df[agent_df['Week'] == selected_week]
 
-        img_buf = io.BytesIO()
-        plt.savefig(img_buf, format='png')
-        img_buf.seek(0)
+        min_dur, max_dur = int(filtered_df['Duration'].min()), int(filtered_df['Duration'].max())
+        selected_duration = st.slider("⏱ Filter by Duration", min_value=min_dur, max_value=max_dur, value=(min_dur, max_dur))
+        filtered_df = filtered_df[(filtered_df['Duration'] >= selected_duration[0]) & (filtered_df['Duration'] <= selected_duration[1])]
 
-        # Save as PDF using HTML if pdfkit is available
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp:
-            html = agent_df.to_html(index=False)
-            tmp.write(f"<html><body>{html}</body></html>".encode())
-            tmp.flush()
-            pdf_buf = io.BytesIO()
-            pdfkit.from_file(tmp.name, "agent_report.pdf")
-            with open("agent_report.pdf", "rb") as f:
-                pdf_bytes = f.read()
-            st.download_button("⬇️ Download PDF", data=pdf_bytes,
-                               file_name="agent_performance.pdf",
-                               mime="application/pdf")
-    except Exception as e:
-        st.warning(f"PDF export requires `matplotlib` and `pdfkit`: {e}")
+        # Charts
+        st.markdown("### 📊 Charts")
+        fig1 = px.bar(filtered_df, x="Agent Name", y="PTP", title="Promise to Pay (PTP) by Agent")
+        st.plotly_chart(fig1, use_container_width=True)
 
-    # --- Drill-Down Views ---
-    st.markdown("### 🔍 Drill-down by Agent")
-    selected_agent = st.selectbox("Select Agent", sorted(agent_df['Agent Name'].unique()))
-    agent_detail = agent_df[agent_df['Agent Name'] == selected_agent]
-    st.dataframe(agent_detail)
+        fig2 = px.pie(filtered_df, names="Agent Name", values="Conversion %", title="Agent Conversion % Distribution")
+        st.plotly_chart(fig2, use_container_width=True)
 
-    st.markdown("### 🔍 Drill-down by Conversion Bucket")
-    agent_df['Conversion Bucket'] = pd.cut(agent_df['Conversion %'], bins=[0, 20, 40, 60, 80, 100],
-                                           labels=['0–20%', '21–40%', '41–60%', '61–80%', '81–100%'])
-    selected_bucket = st.selectbox("Select Conversion Bucket", sorted(agent_df['Conversion Bucket'].dropna().unique()))
-    bucket_detail = agent_df[agent_df['Conversion Bucket'] == selected_bucket]
-    st.dataframe(bucket_detail)
+        fig3 = px.line(filtered_df.sort_values("Duration"), x="Duration", y="PTP", color="Agent Name", title="PTP vs Duration")
+        st.plotly_chart(fig3, use_container_width=True)
 
+        # Drill-down views
+        st.markdown("### 🔍 Drill-down by Agent")
+        selected_agent = st.selectbox("Select Agent", sorted(filtered_df['Agent Name'].unique()))
+        agent_detail = filtered_df[filtered_df['Agent Name'] == selected_agent]
+        st.dataframe(agent_detail)
+
+        st.markdown("### 🔍 Drill-down by Conversion Bucket")
+        filtered_df['Conversion Bucket'] = pd.cut(filtered_df['Conversion %'], bins=[0, 20, 40, 60, 80, 100],
+                                                  labels=['0–20%', '21–40%', '41–60%', '61–80%', '81–100%'])
+        selected_bucket = st.selectbox("Select Conversion Bucket", sorted(filtered_df['Conversion Bucket'].dropna().unique()))
+        st.dataframe(filtered_df[filtered_df['Conversion Bucket'] == selected_bucket])
 
     if st.button("🔓 Logout"):
         st.session_state.authenticated = False
