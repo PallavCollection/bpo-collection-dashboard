@@ -1,11 +1,7 @@
-# Your original import section remains unchanged
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
-import os
-import json
-from datetime import datetime, timedelta
 
 # --- Auto Header Fixer ---
 HEADER_MAPPING = {
@@ -24,39 +20,13 @@ def clean_headers(df):
     df.columns = [HEADER_MAPPING.get(col.strip().lower().replace(" ", "_"), col.strip()) for col in df.columns]
     return df
 
-# --- Session Handling ---
-SESSION_FILE = "session_data.json"
-CACHE_DIR = "cache"
-os.makedirs(CACHE_DIR, exist_ok=True)
-
-def load_session():
-    if os.path.exists(SESSION_FILE):
-        with open(SESSION_FILE, 'r') as f:
-            return json.load(f)
-    return {}
-
-def save_session(data):
-    with open(SESSION_FILE, 'w') as f:
-        json.dump(data, f)
-
 # ---- Auth Section ----
 def authenticate_user(email, password):
     return email == "jjagarbattiudyog@gmail.com" and password == "Sanu@1998"
 
-session_data = load_session()
-now = datetime.now()
-
 if 'authenticated' not in st.session_state:
-    last_login_str = session_data.get('last_login')
-    if last_login_str:
-        last_login = datetime.strptime(last_login_str, "%Y-%m-%d %H:%M:%S")
-        if now - last_login < timedelta(hours=24):
-            st.session_state.authenticated = True
-            st.session_state.user_email = session_data.get('user_email', '')
-        else:
-            st.session_state.authenticated = False
-    else:
-        st.session_state.authenticated = False
+    st.session_state.authenticated = False
+    st.session_state.user_email = ""
 
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
@@ -68,10 +38,8 @@ if not st.session_state.authenticated:
         if authenticate_user(email, password):
             st.session_state.authenticated = True
             st.session_state.user_email = email
-            session_data = {'last_login': now.strftime("%Y-%m-%d %H:%M:%S"), 'user_email': email}
-            save_session(session_data)
             st.success("✅ Logged in successfully!")
-            st.rerun()
+            st.experimental_rerun()
         else:
             st.error("❌ Invalid credentials. View-only mode enabled.")
 else:
@@ -80,73 +48,36 @@ else:
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
-    # --- Dynamic process count ---
-    if 'num_processes' not in st.session_state:
-        st.session_state.num_processes = 2 if is_editor else 1
-
-    num_processes = st.session_state.num_processes
-
-    # ➕ Add Process button in sidebar (only for editor)
     if is_editor:
-        if st.sidebar.button("➕ Add Process"):
-            st.session_state.num_processes += 1
-            st.experimental_rerun()
+        num_processes = st.sidebar.number_input("Number of Processes", min_value=1, max_value=10, value=2)
+    else:
+        num_processes = 1
 
     process_data = {}
 
-    for i in range(num_processes):
+    for i in range(int(num_processes)):
         st.sidebar.markdown("---")
         st.sidebar.subheader(f"📂 Process {i+1}")
-        process_name = f"Process_{i+1}"
+        process_name = st.sidebar.text_input(f"Process {i+1} Name", value=f"Process_{i+1}", disabled=not is_editor)
 
-        if is_editor:
-            process_name = st.sidebar.text_input(f"Process {i+1} Name", value=f"Process_{i+1}")
+        alloc_files = st.sidebar.file_uploader(
+            f"📁 Allocation Files", type=["xlsx"], accept_multiple_files=True,
+            key=f"alloc_{i}", disabled=not is_editor)
 
-            alloc_files = st.sidebar.file_uploader(
-                f"📁 Allocation Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"alloc_{i}")
+        paid_current_files = st.sidebar.file_uploader(
+            f"📅 Current Month Paid Files", type=["xlsx"], accept_multiple_files=True,
+            key=f"paid_current_{i}", disabled=not is_editor)
 
-            paid_current_files = st.sidebar.file_uploader(
-                f"📅 Current Month Paid Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"paid_current_{i}")
+        paid_prev_files = st.sidebar.file_uploader(
+            f"🗓️ Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
+            key=f"paid_prev_{i}", disabled=not is_editor)
 
-            paid_prev_files = st.sidebar.file_uploader(
-                f"🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"paid_prev_{i}")
-        else:
-            st.sidebar.info("View-only mode enabled. Upload disabled.")
-            alloc_files = paid_current_files = paid_prev_files = None
-
-        alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
-        paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
-        paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
-
-        if is_editor and alloc_files:
+        if alloc_files and (paid_current_files or paid_prev_files):
             df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
-            df_alloc.to_csv(alloc_path, index=False)
-        elif os.path.exists(alloc_path):
-            df_alloc = pd.read_csv(alloc_path)
-        else:
-            df_alloc = pd.DataFrame()
-
-        if is_editor and paid_current_files:
-            df_paid_current = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_current_files], ignore_index=True)
-            df_paid_current.to_csv(paid_current_path, index=False)
-        elif os.path.exists(paid_current_path):
-            df_paid_current = pd.read_csv(paid_current_path)
-        else:
-            df_paid_current = pd.DataFrame()
-
-        if is_editor and paid_prev_files:
-            df_paid_prev = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_prev_files], ignore_index=True)
-            df_paid_prev.to_csv(paid_prev_path, index=False)
-        elif os.path.exists(paid_prev_path):
-            df_paid_prev = pd.read_csv(paid_prev_path)
-        else:
-            df_paid_prev = pd.DataFrame()
-
-        if not df_alloc.empty and (not df_paid_current.empty or not df_paid_prev.empty):
+            df_paid_current = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_current_files], ignore_index=True) if paid_current_files else pd.DataFrame()
+            df_paid_prev = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_prev_files], ignore_index=True) if paid_prev_files else pd.DataFrame()
             df_paid_all = pd.concat([df_paid_current, df_paid_prev], ignore_index=True)
+
             df_all = pd.merge(df_alloc, df_paid_all, on='Loan_ID', how='left')
             df_all['Paid_Amount'] = df_all['Paid_Amount'].fillna(0)
             df_all['Recovery %'] = (df_all['Paid_Amount'] / df_all['Allocated_Amount']).round(2)
@@ -163,7 +94,7 @@ else:
             process_data[process_name] = {'all': df_all, 'current': df_current}
 
     if process_data:
-        selected_process = st.selectbox("📍 *Select Process to View Report*", list(process_data.keys()))
+        selected_process = st.selectbox("📍 **Select Process to View Report**", list(process_data.keys()))
         data = process_data[selected_process]
         df_all = data['all']
         df_current = data['current']
@@ -184,12 +115,31 @@ else:
         col4.metric("📈 Recovery % (All Time)", f"{recovery_all}%")
 
         with st.expander("📋 View Current Month Data"):
-            if st.button("👁 View Current Month Data"):
-                st.dataframe(df_current)
+            st.dataframe(df_current)
+            if not df_current.empty:
+                csv = df_current.to_csv(index=False).encode('utf-8')
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                    df_current.to_excel(writer, index=False)
+                st.download_button("⬇️ Download CSV", data=csv, file_name=f"{selected_process}_current.csv", mime='text/csv')
+                st.download_button("⬇️ Download Excel", data=excel_buffer.getvalue(), file_name=f"{selected_process}_current.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+        if not df_current.empty and 'Payment_Date' in df_current:
+            st.markdown("### 📅 Daily Payment Trend (Current Month)")
+            trend = df_current.groupby('Payment_Date')['Paid_Amount'].sum().reset_index()
+            fig = px.line(trend, x='Payment_Date', y='Paid_Amount', markers=True,
+                          title='Daily Payments', color_discrete_sequence=['navy'])
+            st.plotly_chart(fig, use_container_width=True)
 
         with st.expander("📋 View All Time Data"):
-            if st.button("👁 View All Time Data"):
-                st.dataframe(df_all)
+            st.dataframe(df_all)
+            if not df_all.empty:
+                csv_all = df_all.to_csv(index=False).encode('utf-8')
+                excel_all_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_all_buffer, engine='xlsxwriter') as writer:
+                    df_all.to_excel(writer, index=False)
+                st.download_button("⬇️ Download CSV (All)", data=csv_all, file_name=f"{selected_process}_all.csv", mime='text/csv')
+                st.download_button("⬇️ Download Excel (All)", data=excel_all_buffer.getvalue(), file_name=f"{selected_process}_all.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
         st.markdown("### 📦 Bucket-wise Recovery (All Time)")
         if 'Bucket' in df_all.columns:
@@ -204,27 +154,6 @@ else:
     else:
         st.info("👈 Please upload allocation & paid files process-wise to view dashboard.")
 
-    # --- Delete buttons only for admin ---
-    if is_editor:
-        st.markdown("## 🗑 Delete Uploaded Data")
-        file_type = st.radio("Select file type to delete:", 
-            ["Allocation Files", "Current Month Paid Files", "Previous Months Paid Files"])
-        if st.button("🧹 Delete Selected File Type"):
-            prefix_map = {
-                "Allocation Files": "alloc_",
-                "Current Month Paid Files": "paid_current_",
-                "Previous Months Paid Files": "paid_prev_"
-            }
-            for pname in process_data.keys():
-                file_path = os.path.join(CACHE_DIR, f"{prefix_map[file_type]}{pname}.csv")
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    st.success(f"✅ Deleted {file_type} for {pname}")
-                else:
-                    st.info(f"ℹ️ File not found for {pname}")
-
     if st.button("🔓 Logout"):
         st.session_state.authenticated = False
-        if os.path.exists(SESSION_FILE):
-            os.remove(SESSION_FILE)
-        st.rerun()
+        st.experimental_rerun()
