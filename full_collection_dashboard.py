@@ -1,4 +1,3 @@
-# Your original import section remains unchanged
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -75,39 +74,28 @@ if not st.session_state.authenticated:
         else:
             st.error("❌ Invalid credentials. View-only mode enabled.")
 else:
-    st.set_page_config(page_title="✨ Beautiful Collection Dashboard", layout="wide")
+    st.set_page_config(page_title="✨ Collection Dashboard", layout="wide")
     st.markdown("<h1 style='text-align: center; color: navy;'>📊 Collection BPO Dashboard</h1>", unsafe_allow_html=True)
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
-
-    num_processes = 2 if is_editor else 1  # View-only mode has 1 fixed process
+    num_processes = 2 if is_editor else 1
 
     process_data = {}
 
     for i in range(num_processes):
         st.sidebar.markdown("---")
         st.sidebar.subheader(f"📂 Process {i+1}")
-        process_name = f"Process_{i+1}"  # Fixed for viewers
+        process_name = f"Process_{i+1}" if not is_editor else st.sidebar.text_input(f"Process {i+1} Name", value=f"Process_{i+1}")
 
+        alloc_files = paid_current_files = paid_prev_files = None
         if is_editor:
-            process_name = st.sidebar.text_input(f"Process {i+1} Name", value=f"Process_{i+1}")
-
-            alloc_files = st.sidebar.file_uploader(
-                f"📁 Allocation Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"alloc_{i}")
-
-            paid_current_files = st.sidebar.file_uploader(
-                f"📅 Current Month Paid Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"paid_current_{i}")
-
-            paid_prev_files = st.sidebar.file_uploader(
-                f"🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
-                key=f"paid_prev_{i}")
+            alloc_files = st.sidebar.file_uploader("📁 Allocation Files", type=["xlsx"], accept_multiple_files=True, key=f"alloc_{i}")
+            paid_current_files = st.sidebar.file_uploader("📅 Current Month Paid Files", type=["xlsx"], accept_multiple_files=True, key=f"paid_current_{i}")
+            paid_prev_files = st.sidebar.file_uploader("🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True, key=f"paid_prev_{i}")
         else:
-            st.sidebar.info("View-only mode enabled. Upload disabled.")
-            alloc_files = paid_current_files = paid_prev_files = None
+            st.sidebar.info("View-only mode enabled.")
 
-        # File paths for caching
+        # Cache file paths
         alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
         paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
         paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
@@ -154,64 +142,44 @@ else:
             process_data[process_name] = {'all': df_all, 'current': df_current}
 
     if process_data:
-        selected_process = st.selectbox("📍 *Select Process to View Report*", list(process_data.keys()))
+        selected_process = st.selectbox("📍 Select Process to View Report", list(process_data.keys()))
         data = process_data[selected_process]
         df_all = data['all']
         df_current = data['current']
 
-        st.markdown(f"<h2 style='color: teal;'>📌 Dashboard: {selected_process}</h2>", unsafe_allow_html=True)
-
         total_alloc = df_all['Allocated_Amount'].sum()
         total_paid_all = df_all['Paid_Amount'].sum()
         recovery_all = round((total_paid_all / total_alloc)*100, 2) if total_alloc else 0
-
         total_paid_current = df_current['Paid_Amount'].sum() if not df_current.empty else 0
-        recovery_current = round((total_paid_current / total_alloc)*100, 2) if total_alloc else 0
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         col1.metric("💰 Total Allocated", f"₹{total_alloc:,.0f}")
         col2.metric("✅ Paid - All Time", f"₹{total_paid_all:,.0f}")
         col3.metric("🟩 Paid - Current Month", f"₹{total_paid_current:,.0f}")
-        col4.metric("📈 Recovery % (All Time)", f"{recovery_all}%")
 
-        with st.expander("📋 View Current Month Data"):
-            st.dataframe(df_current)
-            if not df_current.empty:
-                csv = df_current.to_csv(index=False).encode('utf-8')
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    df_current.to_excel(writer, index=False)
-                st.download_button("⬇ Download CSV", data=csv, file_name=f"{selected_process}_current.csv", mime='text/csv')
-                st.download_button("⬇ Download Excel", data=excel_buffer.getvalue(), file_name=f"{selected_process}_current.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    # --- Delete options ---
+    st.markdown("---")
+    st.markdown("### 🗑 Delete Uploaded Data")
 
-        if not df_current.empty and 'Payment_Date' in df_current:
-            st.markdown("### 📅 Daily Payment Trend (Current Month)")
-            trend = df_current.groupby('Payment_Date')['Paid_Amount'].sum().reset_index()
-            fig = px.line(trend, x='Payment_Date', y='Paid_Amount', markers=True, title='Daily Payments', color_discrete_sequence=['navy'])
-            st.plotly_chart(fig, use_container_width=True)
+    process_names = [f"Process_{i+1}" for i in range(num_processes)]
+    selected_del_process = st.selectbox("Select Process to Delete File Type", process_names, key="del_process")
+    del_option = st.radio("Select which file type to delete:", ("Allocation Files", "Current Month Paid Files", "Previous Months Paid Files"), key="del_option")
+    if st.button("🧹 Delete Selected File Type"):
+        prefix_map = {"Allocation Files": "alloc_", "Current Month Paid Files": "paid_current_", "Previous Months Paid Files": "paid_prev_"}
+        prefix = prefix_map[del_option]
+        file_path = os.path.join(CACHE_DIR, f"{prefix}{selected_del_process}.csv")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            st.success(f"✅ Deleted {del_option} for '{selected_del_process}'")
+        else:
+            st.info(f"ℹ No cached file found for {del_option} of '{selected_del_process}'")
+        st.rerun()
 
-        with st.expander("📋 View All Time Data"):
-            st.dataframe(df_all)
-            if not df_all.empty:
-                csv_all = df_all.to_csv(index=False).encode('utf-8')
-                excel_all_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_all_buffer, engine='xlsxwriter') as writer:
-                    df_all.to_excel(writer, index=False)
-                st.download_button("⬇ Download CSV (All)", data=csv_all, file_name=f"{selected_process}_all.csv", mime='text/csv')
-                st.download_button("⬇ Download Excel (All)", data=excel_all_buffer.getvalue(), file_name=f"{selected_process}_all.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-        st.markdown("### 📦 Bucket-wise Recovery (All Time)")
-        if 'Bucket' in df_all.columns:
-            bucket_summary = df_all.groupby('Bucket').agg({
-                'Allocated_Amount': 'sum', 'Paid_Amount': 'sum'
-            }).reset_index()
-            bucket_summary['Recovery %'] = (bucket_summary['Paid_Amount'] / bucket_summary['Allocated_Amount'] * 100).round(2)
-            fig2 = px.bar(bucket_summary, x='Bucket', y=['Allocated_Amount', 'Paid_Amount'],
-                          barmode='group', title='Allocated vs Paid by Bucket',
-                          color_discrete_sequence=['#1f77b4', '#2ca02c'])
-            st.plotly_chart(fig2, use_container_width=True)
-    else:
-        st.info("👈 Please upload allocation & paid files process-wise to view dashboard.")
+    if st.button("🗑 Delete ALL Uploaded Data (All Processes)"):
+        for file in os.listdir(CACHE_DIR):
+            os.remove(os.path.join(CACHE_DIR, file))
+        st.success("✅ All uploaded data deleted successfully!")
+        st.rerun()
 
     if st.button("🔓 Logout"):
         st.session_state.authenticated = False
