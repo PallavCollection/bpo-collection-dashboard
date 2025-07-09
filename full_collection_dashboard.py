@@ -1,7 +1,10 @@
 # Updated script with:
-# 1. Data saved to SQLite
-# 2. Export all process reports
-# 3. Data filtering/sorting using AgGrid
+# - Dynamic processes
+# - Persistent rename/save
+# - Add/Remove buttons
+# - Export all reports
+# - Filtering/sorting
+# - 🔥 Attractive charts (added)
 
 import streamlit as st
 import pandas as pd
@@ -29,7 +32,8 @@ HEADER_MAPPING = {
     "paid_amount": "Paid_Amount",
     "paymentdate": "Payment_Date",
     "payment_date": "Payment_Date",
-    "bucket": "Bucket"
+    "bucket": "Bucket",
+    "agency": "Agency"
 }
 
 def clean_headers(df):
@@ -89,13 +93,11 @@ else:
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
-    # --- Init States ---
     if 'num_processes' not in st.session_state:
         st.session_state.num_processes = 1
     if 'process_names' not in st.session_state:
         st.session_state.process_names = [f"Process_{i+1}" for i in range(st.session_state.num_processes)]
 
-    # --- Sidebar Controls ---
     if is_editor:
         with st.sidebar:
             st.markdown("### 🔧 Process Manager")
@@ -184,7 +186,34 @@ else:
         grid = gb.build()
         AgGrid(df_all, gridOptions=grid, fit_columns_on_grid_load=True)
 
-        # --- Export Full Report Button ---
+        # --- 🔥 Charts ---
+        if 'Payment_Date' in df_current.columns and not df_current.empty:
+            st.markdown("### 📅 Daily Payment Trend")
+            trend = df_current.groupby('Payment_Date')['Paid_Amount'].sum().reset_index()
+            fig = px.line(trend, x='Payment_Date', y='Paid_Amount', title='Daily Paid Amount', markers=True,
+                          color_discrete_sequence=['#0077b6'])
+            st.plotly_chart(fig, use_container_width=True)
+
+        if 'Bucket' in df_all.columns:
+            st.markdown("### 📦 Bucket-wise Recovery")
+            bucket_df = df_all.groupby('Bucket').agg({
+                'Allocated_Amount': 'sum', 'Paid_Amount': 'sum'
+            }).reset_index()
+            bucket_df['Recovery %'] = (bucket_df['Paid_Amount'] / bucket_df['Allocated_Amount'] * 100).round(2)
+            fig2 = px.bar(bucket_df, x='Bucket', y='Recovery %', color='Bucket',
+                          title='Recovery % by Bucket', color_discrete_sequence=px.colors.qualitative.Vivid)
+            st.plotly_chart(fig2, use_container_width=True)
+
+        if 'Agency' in df_all.columns:
+            st.markdown("### 🏢 Agency-wise Recovery %")
+            agency_df = df_all.groupby('Agency').agg({
+                'Allocated_Amount': 'sum', 'Paid_Amount': 'sum'
+            }).reset_index()
+            agency_df['Recovery %'] = (agency_df['Paid_Amount'] / agency_df['Allocated_Amount'] * 100).round(2)
+            fig3 = px.bar(agency_df, x='Agency', y='Recovery %', color='Agency', title='Recovery by Agency',
+                         color_discrete_sequence=px.colors.qualitative.Bold)
+            st.plotly_chart(fig3, use_container_width=True)
+
         if is_editor:
             if st.button("📤 Export All Reports"):
                 combined = []
