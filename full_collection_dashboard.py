@@ -260,3 +260,23 @@ if existing_processes:
         st.rerun()
 else:
     st.info("ℹ️ No uploaded data found yet to delete.")
+# Show delete section only for editor & if authenticated
+if st.session_state.authenticated and is_editor:
+    st.markdown("## 🗑 Delete Uploaded Data (Single Type)")
+    selected_process_del = st.selectbox("📍 Select Process to Delete File Type", list(process_data.keys()))
+
+    file_type = st.radio("Select file type to delete:",
+                         ["Allocation Files", "Current Month Paid Files", "Previous Months Paid Files"])
+
+    if st.button("🧹 Delete Selected File Type"):
+        delete_map = {
+            "Allocation Files": f"{CACHE_DIR}/alloc_{selected_process_del}.csv",
+            "Current Month Paid Files": f"{CACHE_DIR}/paid_current_{selected_process_del}.csv",
+            "Previous Months Paid Files": f"{CACHE_DIR}/paid_prev_{selected_process_del}.csv"
+        }
+        file_path = delete_map.get(file_type)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            st.success(f"✅ Deleted {file_type} for {selected_process_del}")
+        else:
+            st.warning("⚠️ File not found or already deleted.")
