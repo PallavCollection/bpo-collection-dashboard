@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+import os
+import json
+from datetime import datetime, timedelta
 
 # --- Auto Header Fixer ---
 HEADER_MAPPING = {
@@ -20,13 +23,39 @@ def clean_headers(df):
     df.columns = [HEADER_MAPPING.get(col.strip().lower().replace(" ", "_"), col.strip()) for col in df.columns]
     return df
 
+# --- Session Handling ---
+SESSION_FILE = "session_data.json"
+CACHE_DIR = "cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def load_session():
+    if os.path.exists(SESSION_FILE):
+        with open(SESSION_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_session(data):
+    with open(SESSION_FILE, 'w') as f:
+        json.dump(data, f)
+
 # ---- Auth Section ----
 def authenticate_user(email, password):
     return email == "jjagarbattiudyog@gmail.com" and password == "Sanu@1998"
 
+session_data = load_session()
+now = datetime.now()
+
 if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-    st.session_state.user_email = ""
+    last_login_str = session_data.get('last_login')
+    if last_login_str:
+        last_login = datetime.strptime(last_login_str, "%Y-%m-%d %H:%M:%S")
+        if now - last_login < timedelta(hours=24):
+            st.session_state.authenticated = True
+            st.session_state.user_email = session_data.get('user_email', '')
+        else:
+            st.session_state.authenticated = False
+    else:
+        st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
@@ -38,6 +67,8 @@ if not st.session_state.authenticated:
         if authenticate_user(email, password):
             st.session_state.authenticated = True
             st.session_state.user_email = email
+            session_data = {'last_login': now.strftime("%Y-%m-%d %H:%M:%S"), 'user_email': email}
+            save_session(session_data)
             st.success("✅ Logged in successfully!")
             st.rerun()
         else:
@@ -69,15 +100,40 @@ else:
             key=f"paid_current_{i}", disabled=not is_editor)
 
         paid_prev_files = st.sidebar.file_uploader(
-            f"🗓️ Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
+            f"🗓 Previous Months Paid Files", type=["xlsx"], accept_multiple_files=True,
             key=f"paid_prev_{i}", disabled=not is_editor)
 
-        if alloc_files and (paid_current_files or paid_prev_files):
-            df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
-            df_paid_current = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_current_files], ignore_index=True) if paid_current_files else pd.DataFrame()
-            df_paid_prev = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_prev_files], ignore_index=True) if paid_prev_files else pd.DataFrame()
-            df_paid_all = pd.concat([df_paid_current, df_paid_prev], ignore_index=True)
+        # Load cached data if files not uploaded
+        alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
+        paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
+        paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
 
+        if alloc_files:
+            df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
+            df_alloc.to_csv(alloc_path, index=False)
+        elif os.path.exists(alloc_path):
+            df_alloc = pd.read_csv(alloc_path)
+        else:
+            df_alloc = pd.DataFrame()
+
+        if paid_current_files:
+            df_paid_current = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_current_files], ignore_index=True)
+            df_paid_current.to_csv(paid_current_path, index=False)
+        elif os.path.exists(paid_current_path):
+            df_paid_current = pd.read_csv(paid_current_path)
+        else:
+            df_paid_current = pd.DataFrame()
+
+        if paid_prev_files:
+            df_paid_prev = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_prev_files], ignore_index=True)
+            df_paid_prev.to_csv(paid_prev_path, index=False)
+        elif os.path.exists(paid_prev_path):
+            df_paid_prev = pd.read_csv(paid_prev_path)
+        else:
+            df_paid_prev = pd.DataFrame()
+
+        if not df_alloc.empty and (not df_paid_current.empty or not df_paid_prev.empty):
+            df_paid_all = pd.concat([df_paid_current, df_paid_prev], ignore_index=True)
             df_all = pd.merge(df_alloc, df_paid_all, on='Loan_ID', how='left')
             df_all['Paid_Amount'] = df_all['Paid_Amount'].fillna(0)
             df_all['Recovery %'] = (df_all['Paid_Amount'] / df_all['Allocated_Amount']).round(2)
@@ -94,7 +150,7 @@ else:
             process_data[process_name] = {'all': df_all, 'current': df_current}
 
     if process_data:
-        selected_process = st.selectbox("📍 **Select Process to View Report**", list(process_data.keys()))
+        selected_process = st.selectbox("📍 *Select Process to View Report*", list(process_data.keys()))
         data = process_data[selected_process]
         df_all = data['all']
         df_current = data['current']
@@ -121,8 +177,8 @@ else:
                 excel_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                     df_current.to_excel(writer, index=False)
-                st.download_button("⬇️ Download CSV", data=csv, file_name=f"{selected_process}_current.csv", mime='text/csv')
-                st.download_button("⬇️ Download Excel", data=excel_buffer.getvalue(), file_name=f"{selected_process}_current.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                st.download_button("⬇ Download CSV", data=csv, file_name=f"{selected_process}_current.csv", mime='text/csv')
+                st.download_button("⬇ Download Excel", data=excel_buffer.getvalue(), file_name=f"{selected_process}_current.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
         if not df_current.empty and 'Payment_Date' in df_current:
             st.markdown("### 📅 Daily Payment Trend (Current Month)")
@@ -138,8 +194,8 @@ else:
                 excel_all_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_all_buffer, engine='xlsxwriter') as writer:
                     df_all.to_excel(writer, index=False)
-                st.download_button("⬇️ Download CSV (All)", data=csv_all, file_name=f"{selected_process}_all.csv", mime='text/csv')
-                st.download_button("⬇️ Download Excel (All)", data=excel_all_buffer.getvalue(), file_name=f"{selected_process}_all.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                st.download_button("⬇ Download CSV (All)", data=csv_all, file_name=f"{selected_process}_all.csv", mime='text/csv')
+                st.download_button("⬇ Download Excel (All)", data=excel_all_buffer.getvalue(), file_name=f"{selected_process}_all.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
         st.markdown("### 📦 Bucket-wise Recovery (All Time)")
         if 'Bucket' in df_all.columns:
@@ -156,4 +212,6 @@ else:
 
     if st.button("🔓 Logout"):
         st.session_state.authenticated = False
+        if os.path.exists(SESSION_FILE):
+            os.remove(SESSION_FILE)
         st.rerun()
