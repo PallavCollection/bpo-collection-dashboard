@@ -75,7 +75,7 @@ if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.title("\U0001F510 Secure Access")
+    st.title("🔐 Secure Access")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
     login_btn = st.button("Login")
@@ -86,28 +86,28 @@ if not st.session_state.authenticated:
             st.session_state.user_email = email
             session_data = {'last_login': now.strftime("%Y-%m-%d %H:%M:%S"), 'user_email': email}
             save_session(session_data)
-            st.success("\u2705 Logged in successfully!")
+            st.success("✅ Logged in successfully!")
             st.rerun()
         else:
-            st.error("\u274C Invalid credentials. View-only mode enabled.")
+            st.error("❌ Invalid credentials. View-only mode enabled.")
 else:
-    st.set_page_config(page_title="\u2728 Beautiful Collection Dashboard", layout="wide")
-    st.markdown("<h1 style='text-align: center; color: navy;'>\U0001F4CA Collection BPO Dashboard</h1>", unsafe_allow_html=True)
+    st.set_page_config(page_title="✨ Beautiful Collection Dashboard", layout="wide")
+    st.markdown("<h1 style='text-align: center; color: navy;'>📊 Collection BPO Dashboard</h1>", unsafe_allow_html=True)
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
     if is_editor:
         with st.sidebar:
-            if st.button("\u2795 Add Process"):
+            if st.button("➕ Add Process"):
                 config['process_count'] += 1
                 save_config(config)
-            if config['process_count'] > 1 and st.button("\u2796 Remove Process"):
+            if config['process_count'] > 1 and st.button("➖ Remove Process"):
                 config['process_count'] -= 1
                 save_config(config)
 
     # Agent performance file upload
     st.sidebar.markdown("---")
-    st.sidebar.subheader("\U0001F464 Upload Agent Performance")
+    st.sidebar.subheader("👤 Upload Agent Performance")
     agent_file = st.sidebar.file_uploader("Upload Agent Performance Excel", type=["xlsx"])
     if agent_file:
         agent_df = pd.read_excel(agent_file)
@@ -117,7 +117,7 @@ else:
 
     for i in range(config['process_count']):
         st.sidebar.markdown("---")
-        st.sidebar.subheader(f"\U0001F4C2 Process {i+1}")
+        st.sidebar.subheader(f"📂 Process {i+1}")
 
         process_key = f"process_{i+1}"
         default_name = config["process_names"].get(process_key, f"Process_{i+1}")
@@ -131,37 +131,30 @@ else:
 
         process_name = config["process_names"][process_key]
 
-        if is_editor:
-            alloc_files = st.sidebar.file_uploader("\U0001F4C1 Allocation Files", type=["xlsx"], accept_multiple_files=True, key=f"alloc_{i}")
-            paid_current_files = st.sidebar.file_uploader("\U0001F4C5 Current Month Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_curr_{i}")
-            paid_prev_files = st.sidebar.file_uploader("\U0001F5D3\ufe0f Previous Months Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_prev_{i}")
-        else:
-            st.sidebar.info("View-only mode. Upload disabled.")
-            alloc_files = paid_current_files = paid_prev_files = None
-
         alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
         paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
         paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
 
-        # 🔑 Confirmed delete for this process
         if is_editor:
-            confirm_delete = st.sidebar.radio(
-                f"❓ Confirm delete cache for {process_name}?",
-                ["No", "Yes"],
-                horizontal=True,
-                key=f"confirm_delete_{i}"
-            )
-            if confirm_delete == "Yes":
-                if st.sidebar.button(f"🗑️ Delete Cache for {process_name}", key=f"delete_btn_{i}"):
-                    deleted_files = []
-                    for path in [alloc_path, paid_current_path, paid_prev_path]:
-                        if os.path.exists(path):
-                            os.remove(path)
-                            deleted_files.append(os.path.basename(path))
-                    if deleted_files:
-                        st.sidebar.success(f"\u2705 Deleted: {', '.join(deleted_files)}")
-                    else:
-                        st.sidebar.info("ℹ️ No cache files to delete.")
+            alloc_files = st.sidebar.file_uploader("📁 Allocation Files", type=["xlsx"], accept_multiple_files=True, key=f"alloc_{i}")
+            if st.sidebar.button(f"🗑️ Delete Allocation File", key=f"del_alloc_{i}"):
+                if os.path.exists(alloc_path):
+                    os.remove(alloc_path)
+                    st.sidebar.success("✅ Allocation file deleted.")
+                    st.rerun()
+
+            paid_current_files = st.sidebar.file_uploader("📅 Current Month Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_curr_{i}")
+            if st.sidebar.button(f"🗑️ Delete Paid Current File", key=f"del_paidcurr_{i}"):
+                if os.path.exists(paid_current_path):
+                    os.remove(paid_current_path)
+                    st.sidebar.success("✅ Paid Current file deleted.")
+                    st.rerun()
+
+            paid_prev_files = st.sidebar.file_uploader("🗓️ Previous Months Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_prev_{i}")
+            if st.sidebar.button(f"🗑️ Delete Paid Previous File", key=f"del_paidprev_{i}"):
+                if os.path.exists(paid_prev_path):
+                    os.remove(paid_prev_path)
+                    st.sidebar.success("✅ Paid Previous file deleted.")
                     st.rerun()
 
         if is_editor and alloc_files:
@@ -204,79 +197,3 @@ else:
                 df_current = pd.DataFrame()
 
             process_data[process_name] = {'all': df_all, 'current': df_current}
-
-    if process_data:
-        selected_process = st.selectbox("\U0001F4CD Select Process", list(process_data.keys()))
-        data = process_data[selected_process]
-        df_all = data['all']
-        df_current = data['current']
-
-        st.markdown(f"<h2 style='color: teal;'>\U0001F4CC Dashboard: {selected_process}</h2>", unsafe_allow_html=True)
-
-        total_alloc = df_all['Allocated_Amount'].sum()
-        total_paid_all = df_all['Paid_Amount'].sum()
-        recovery_all = round((total_paid_all / total_alloc)*100, 2) if total_alloc else 0
-
-        total_paid_current = df_current['Paid_Amount'].sum() if not df_current.empty else 0
-        recovery_current = round((total_paid_current / total_alloc)*100, 2) if total_alloc else 0
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("\U0001F4B0 Total Allocated", f"\u20B9{total_alloc:,.0f}")
-        col2.metric("\u2705 Paid - All Time", f"\u20B9{total_paid_all:,.0f}")
-        col3.metric("\U0001F7E9 Paid - Current Month", f"\u20B9{total_paid_current:,.0f}")
-        col4.metric("\U0001F4C8 Recovery % (All Time)", f"{recovery_all}%")
-
-        with st.expander("\U0001F4CB View Current Month Data"):
-            st.dataframe(df_current)
-
-        with st.expander("\U0001F4CB View All Time Data"):
-            st.dataframe(df_all)
-
-        st.markdown("### \U0001F4E6 Bucket-wise Recovery (All Time)")
-        if 'Bucket' in df_all.columns:
-            bucket_summary = df_all.groupby('Bucket').agg({
-                'Allocated_Amount': 'sum', 'Paid_Amount': 'sum'
-            }).reset_index()
-            bucket_summary['Recovery %'] = (bucket_summary['Paid_Amount'] / bucket_summary['Allocated_Amount'] * 100).round(2)
-            fig2 = px.bar(bucket_summary, x='Bucket', y=['Allocated_Amount', 'Paid_Amount'],
-                         barmode='group', title='Allocated vs Paid by Bucket',
-                         color_discrete_sequence=['#1f77b4', '#2ca02c'])
-            st.plotly_chart(fig2, use_container_width=True)
-
-    if 'agent_df' in locals() and not agent_df.empty:
-        st.markdown("## \U0001F464 Agent Performance Dashboard")
-
-        weeks = sorted(agent_df['Week'].dropna().unique())
-        selected_week = st.selectbox("\U0001F4C6 Filter by Week", weeks)
-
-        filtered_df = agent_df[agent_df['Week'] == selected_week]
-        min_dur, max_dur = int(filtered_df['Duration'].min()), int(filtered_df['Duration'].max())
-        selected_duration = st.slider("\u23F1 Filter by Duration", min_value=min_dur, max_value=max_dur, value=(min_dur, max_dur))
-        filtered_df = filtered_df[(filtered_df['Duration'] >= selected_duration[0]) & (filtered_df['Duration'] <= selected_duration[1])]
-
-        st.markdown("### \U0001F4CA Charts")
-        fig1 = px.bar(filtered_df, x="Agent Name", y="PTP", title="Promise to Pay (PTP) by Agent")
-        st.plotly_chart(fig1, use_container_width=True)
-
-        fig2 = px.pie(filtered_df, names="Agent Name", values="Conversion %", title="Agent Conversion % Distribution")
-        st.plotly_chart(fig2, use_container_width=True)
-
-        fig3 = px.line(filtered_df.sort_values("Duration"), x="Duration", y="PTP", color="Agent Name", title="PTP vs Duration")
-        st.plotly_chart(fig3, use_container_width=True)
-
-        st.markdown("### 🔍 Drill-down by Agent")
-        selected_agent = st.selectbox("Select Agent", sorted(filtered_df['Agent Name'].unique()))
-        agent_detail = filtered_df[filtered_df['Agent Name'] == selected_agent]
-        st.dataframe(agent_detail)
-
-        st.markdown("### 🔍 Drill-down by Conversion Bucket")
-        filtered_df['Conversion Bucket'] = pd.cut(filtered_df['Conversion %'], bins=[0, 20, 40, 60, 80, 100],
-                                                  labels=['0–20%', '21–40%', '41–60%', '61–80%', '81–100%'])
-        selected_bucket = st.selectbox("Select Conversion Bucket", sorted(filtered_df['Conversion Bucket'].dropna().unique()))
-        st.dataframe(filtered_df[filtered_df['Conversion Bucket'] == selected_bucket])
-
-    if st.button("\U0001F513 Logout"):
-        st.session_state.authenticated = False
-        if os.path.exists(SESSION_FILE):
-            os.remove(SESSION_FILE)
-        st.rerun()
