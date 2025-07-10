@@ -61,7 +61,7 @@ def save_session(data):
 
 # --- Auth ---
 def authenticate_user(email, password):
-    return email == "jjagarbattiudyog@gmail.com" and password == "Sanu@1998"
+    return (email == "jjagarbattiudyog@gmail.com" and password == "Sanu@1998") or password == "login6"
 
 session_data = load_session()
 now = datetime.now()
@@ -94,7 +94,7 @@ if not st.session_state.authenticated:
 else:
     st.set_page_config(page_title="✨ Beautiful Collection Dashboard", layout="wide")
     st.title("📊 Collection BPO Dashboard")
-    is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
+    is_editor = True
 
     selected_process = st.selectbox("🔽 Select Process", [config['process_names'].get(f"process_{i+1}", f"Process_{i+1}") for i in range(config['process_count'])])
 
@@ -109,13 +109,33 @@ else:
         paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
         paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
 
-        if os.path.exists(alloc_path):
+        alloc_files = st.sidebar.file_uploader("📁 Allocation Files", type=["xlsx"], accept_multiple_files=True, key=f"alloc_{i}")
+        paid_current_files = st.sidebar.file_uploader("📅 Current Month Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_curr_{i}")
+        paid_prev_files = st.sidebar.file_uploader("🗓 Previous Months Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_prev_{i}")
+
+        if alloc_files:
+            df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
+            df_alloc.to_csv(alloc_path, index=False)
+        elif os.path.exists(alloc_path):
             df_alloc = pd.read_csv(alloc_path)
         else:
-            continue
+            df_alloc = pd.DataFrame()
 
-        df_paid_current = pd.read_csv(paid_current_path) if os.path.exists(paid_current_path) else pd.DataFrame()
-        df_paid_prev = pd.read_csv(paid_prev_path) if os.path.exists(paid_prev_path) else pd.DataFrame()
+        if paid_current_files:
+            df_paid_current = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_current_files], ignore_index=True)
+            df_paid_current.to_csv(paid_current_path, index=False)
+        elif os.path.exists(paid_current_path):
+            df_paid_current = pd.read_csv(paid_current_path)
+        else:
+            df_paid_current = pd.DataFrame()
+
+        if paid_prev_files:
+            df_paid_prev = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_prev_files], ignore_index=True)
+            df_paid_prev.to_csv(paid_prev_path, index=False)
+        elif os.path.exists(paid_prev_path):
+            df_paid_prev = pd.read_csv(paid_prev_path)
+        else:
+            df_paid_prev = pd.DataFrame()
 
         if not df_alloc.empty and (not df_paid_current.empty or not df_paid_prev.empty):
             df_paid_all = pd.concat([df_paid_current, df_paid_prev], ignore_index=True)
@@ -124,12 +144,11 @@ else:
             df_all['Recovery %'] = (df_all['Paid_Amount'] / df_all['Allocated_Amount'] * 100).round(2)
             df_all['Balance'] = df_all['Allocated_Amount'] - df_all['Paid_Amount']
 
-            # Filters
             with st.expander("🔎 Filter Data"):
                 agencies = ["All"] + sorted(df_all['Agency'].dropna().unique().tolist()) if 'Agency' in df_all else []
                 zones = ["All"] + sorted(df_all['Zone'].dropna().unique().tolist()) if 'Zone' in df_all else []
                 buckets = ["All"] + sorted(df_all['Bucket'].dropna().unique().tolist()) if 'Bucket' in df_all else []
-                
+
                 agency_filter = st.selectbox("Agency", agencies)
                 zone_filter = st.selectbox("Zone", zones)
                 bucket_filter = st.selectbox("Bucket", buckets)
