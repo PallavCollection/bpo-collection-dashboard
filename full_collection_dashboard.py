@@ -96,10 +96,7 @@ if not st.session_state.authenticated:
 else:
     st.set_page_config(page_title="✨ Beautiful Collection Dashboard", layout="wide")
 
-    # --- Auto-Refresh ---
-    st_autorefresh = st.experimental_rerun
     refresh_interval = st.sidebar.number_input("🔁 Auto-refresh (seconds)", min_value=10, max_value=300, value=60)
-    st_autorefresh_interval = st.experimental_memo(lambda: datetime.now())
     if datetime.now().second % refresh_interval == 0:
         st.rerun()
 
