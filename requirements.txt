@@ -1,6 +1,6 @@
 streamlit
 pandas
-plotly
 openpyxl
-sqlalchemy
+plotly
 xlsxwriter
+sqlalchemy
