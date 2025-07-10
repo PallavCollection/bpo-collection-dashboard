@@ -1,29 +1,42 @@
+# full_collection_dashboard.py
+
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import os
 import time
 from datetime import datetime, timedelta
-import json
-import io
+import plotly.express as px
+from io import BytesIO
 
-st.set_page_config(page_title="📊 Collection BPO Dashboard", layout="wide")
-st.title("📊 Collection BPO Dashboard")
-
+# Constants
 ADMIN_EMAIL = "jjagarbattiudyog@gmail.com"
 ADMIN_PASSWORD = "Sanu@1998"
 VIEW_ONLY_PASSWORD = "login6"
+DATA_DIR = "uploaded_data"
 
-def save_session(data):
-    with open("session.json", "w") as f:
-        json.dump(data, f)
+# Ensure data directory exists
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Utility functions for session
+@st.cache_data
+
+def load_data(path):
+    return pd.read_excel(path)
+
+def save_session(data, user_email):
+    session_file = os.path.join(DATA_DIR, f"session_{user_email}.json")
+    with open(session_file, "w") as f:
+        f.write(str(data))
 
 def load_session():
-    if os.path.exists("session.json"):
-        with open("session.json", "r") as f:
-            return json.load(f)
+    session_files = os.listdir(DATA_DIR)
+    for file in session_files:
+        if file.startswith("session_"):
+            with open(os.path.join(DATA_DIR, file)) as f:
+                return eval(f.read())
     return {}
 
+# Authentication
 def authenticate_user(email, password):
     if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
         return "editor"
@@ -32,20 +45,11 @@ def authenticate_user(email, password):
     else:
         return None
 
-session_data = load_session()
-now = datetime.now()
-if 'last_login' in session_data:
-    last_login = datetime.strptime(session_data['last_login'], "%Y-%m-%d %H:%M:%S")
-    if now - last_login < timedelta(hours=24):
-        st.session_state.authenticated = True
-        st.session_state.user_email = session_data.get('user_email', '')
-        st.session_state.role = session_data.get('role', 'viewer')
-    else:
-        st.session_state.authenticated = False
-else:
+# UI: Login
+if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-if not st.session_state.get("authenticated"):
+if not st.session_state.authenticated:
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
@@ -54,16 +58,22 @@ if not st.session_state.get("authenticated"):
             st.session_state.authenticated = True
             st.session_state.user_email = email
             st.session_state.role = role
-            save_session({'last_login': now.strftime("%Y-%m-%d %H:%M:%S"), 'user_email': email, 'role': role})
+            save_session({"last_login": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "user_email": email, "role": role}, email)
             st.success("✅ Logged in successfully!")
             st.rerun()
         else:
             st.error("❌ Invalid credentials. View-only mode enabled.")
     st.stop()
 
+# UI Config
+st.set_page_config(page_title="📊 Collection BPO Dashboard", layout="wide")
+st.title("📊 Collection BPO Dashboard")
+
+# Role check
 is_editor = st.session_state.role == "editor"
 
-if st.sidebar.button("🔐 Logout"):
+# Sidebar refresh and logout
+if st.sidebar.button("🔒 Logout"):
     st.session_state.clear()
     st.rerun()
 
@@ -74,129 +84,114 @@ if time.time() - st.session_state['last_refresh'] > 900:
     st.session_state['last_refresh'] = time.time()
     st.experimental_rerun()
 
-st.sidebar.markdown(f"⏰ Last refresh: {datetime.fromtimestamp(st.session_state['last_refresh']).strftime('%Y-%m-%d %H:%M:%S')}")
-if st.sidebar.button("🔄 Manual Refresh"):
+st.sidebar.markdown(f"🔄 **Last refresh:** {datetime.fromtimestamp(st.session_state['last_refresh']).strftime('%Y-%m-%d %H:%M:%S')}")
+if st.sidebar.button("🔁 Manual Refresh"):
     st.session_state['last_refresh'] = time.time()
     st.experimental_rerun()
 
-EXPECTED_HEADERS = {
-    'alloc': ['Loan ID', 'Customer Name', 'Amount'],
-    'paid': ['Loan ID', 'Paid Amount'],
-    'prev_paid': ['Loan ID', 'Previous Paid Amount'],
-    'agent_perf': ['Ranking', 'Week', 'Agent Name', 'Total ca', 'Duration', 'PTP']
+# Process management
+if 'processes' not in st.session_state:
+    st.session_state['processes'] = ["Process_1"]
+
+processes = st.session_state.get("processes", ["Process_1"])
+selected_process = st.selectbox("Select Process", processes)
+
+if is_editor:
+    new_process = st.sidebar.text_input("➕ Add Process")
+    if st.sidebar.button("Add Process") and new_process:
+        if new_process not in st.session_state.processes:
+            st.session_state.processes.append(new_process)
+            st.experimental_rerun()
+
+# Upload Section per process
+process_path = os.path.join(DATA_DIR, selected_process)
+os.makedirs(process_path, exist_ok=True)
+
+st.sidebar.markdown(f"### 📁 {selected_process}")
+
+# Helper to save files
+
+def save_uploaded_file(uploaded_file, folder):
+    save_path = os.path.join(process_path, folder)
+    os.makedirs(save_path, exist_ok=True)
+    file_path = os.path.join(save_path, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+# Upload widgets
+folders = {
+    "Allocation Files": "alloc",
+    "Current Month Paid": "paid",
+    "Previous Months Paid": "prev_paid",
+    "Agent Performance": "agent"
 }
 
-HEADER_MAPPING = {
-    'loanid': 'Loan ID',
-    'custname': 'Customer Name',
-    'amt': 'Amount',
-    'paidamt': 'Paid Amount',
-    'ranking': 'Ranking',
-    'week': 'Week',
-    'agentname': 'Agent Name',
-    'duration': 'Duration'
-}
+uploaded_data = {}
 
-def auto_correct_headers(df):
-    df.columns = [col.strip().lower().replace(" ", "") for col in df.columns]
-    rename_map = {}
-    for col in df.columns:
-        for key, val in HEADER_MAPPING.items():
-            if key in col:
-                rename_map[col] = val
-                break
-    df.rename(columns=rename_map, inplace=True)
-    return df
+for label, key in folders.items():
+    st.sidebar.markdown(f"### {label}")
+    file = st.sidebar.file_uploader(f"Upload {label}", type=["xlsx"], key=f"{selected_process}_{key}")
+    if file:
+        path = save_uploaded_file(file, key)
+        uploaded_data[key] = path
 
-processes = st.sidebar.session_state.get("processes", ["Process_1"])
-selected_process = st.selectbox("🔽 Select Process", processes)
+# Delete button for data
+if is_editor:
+    if st.sidebar.button("🗑 Delete Data"):
+        import shutil
+        shutil.rmtree(process_path)
+        st.session_state.processes.remove(selected_process)
+        st.success("Deleted data.")
+        st.experimental_rerun()
 
-if is_editor and st.sidebar.button("➕ Add Process"):
-    new_process = f"Process_{len(processes)+1}"
-    processes.append(new_process)
-    st.sidebar.session_state["processes"] = processes
-    st.experimental_rerun()
-
-st.sidebar.subheader(selected_process)
-
-uploaded_files = {}
-file_labels = ['Allocation Files', 'Current Month Paid', 'Previous Months Paid', 'Agent Performance']
-file_keys = ['alloc', 'paid', 'prev_paid', 'agent_perf']
-
-for label, key in zip(file_labels, file_keys):
-    st.sidebar.markdown(f"📁 {label}")
-    uploaded_file = st.sidebar.file_uploader(f"Upload {label}", type=["xlsx"], key=f"{selected_process}_{key}")
-    if uploaded_file:
-        save_path = f"data/{selected_process}_{key}.xlsx"
-        os.makedirs("data", exist_ok=True)
-        with open(save_path, "wb") as f:
-            f.write(uploaded_file.read())
-
-    uploaded_files[key] = f"data/{selected_process}_{key}.xlsx"
-
-if st.sidebar.button("🗑️ Delete Data"):
-    for f in uploaded_files.values():
-        if os.path.exists(f):
-            os.remove(f)
-    st.success("🧹 Data deleted.")
-    st.experimental_rerun()
+# Load and process data
 
 try:
-    df_alloc = pd.read_excel(uploaded_files['alloc'])
-    df_paid = pd.read_excel(uploaded_files['paid'])
-    df_prev = pd.read_excel(uploaded_files['prev_paid'])
-    df_agent = pd.read_excel(uploaded_files['agent_perf'])
+    alloc_file = uploaded_data.get("alloc")
+    paid_file = uploaded_data.get("paid")
+    agent_file = uploaded_data.get("agent")
 
-    df_alloc = auto_correct_headers(df_alloc)
-    df_paid = auto_correct_headers(df_paid)
-    df_prev = auto_correct_headers(df_prev)
-    df_agent = auto_correct_headers(df_agent)
+    if alloc_file and paid_file:
+        df_alloc = load_data(alloc_file)
+        df_paid = load_data(paid_file)
 
-    df_all = pd.merge(df_alloc, df_paid, on="Loan ID", how="left")
-    df_all = pd.merge(df_all, df_prev, on="Loan ID", how="left")
+        # Auto correct headers (example: convert to title and strip)
+        df_alloc.columns = [col.strip().title() for col in df_alloc.columns]
+        df_paid.columns = [col.strip().title() for col in df_paid.columns]
 
-    st.subheader("📊 Dashboard")
-    st.dataframe(df_all)
+        merged = pd.merge(df_alloc, df_paid, on="Loan Id", how="inner")
+        st.subheader("📌 Merged Allocation & Paid Data")
+        st.dataframe(merged)
 
-    st.download_button(
-        label="📥 Download Merged Report (Excel)",
-        data=df_all.to_excel(index=False, engine='xlsxwriter'),
-        file_name=f"{selected_process}_merged_report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        # Export merged
+        output = BytesIO()
+        merged.to_excel(output, index=False)
+        st.download_button("📥 Download Merged Report", output.getvalue(), file_name="merged_report.xlsx")
 
-    st.subheader("📋 Agent Performance")
-    selected_week = st.selectbox("Filter by Week", options=["All"] + sorted(df_agent['Week'].unique().tolist()))
-    if selected_week != "All":
-        df_agent = df_agent[df_agent['Week'] == selected_week]
+    if agent_file:
+        df_agent = load_data(agent_file)
+        df_agent.columns = [col.strip().title() for col in df_agent.columns]
+        st.subheader("🧑‍💼 Agent Performance")
+        st.dataframe(df_agent, use_container_width=True)
 
-    st.dataframe(df_agent.sort_values(by='Ranking'))
+        # Filter & Sort
+        agent_week = st.selectbox("Filter by Week", options=df_agent['Week'].unique())
+        df_filtered = df_agent[df_agent['Week'] == agent_week]
 
-    st.markdown("### 📈 Agent Performance Charts")
-    col1, col2 = st.columns(2)
-    with col1:
-        if 'Total ca' in df_agent.columns:
-            fig1 = px.bar(df_agent, x='Agent Name', y='Total ca', title='Total Calls by Agent')
-            st.plotly_chart(fig1)
-    with col2:
-        if 'PTP' in df_agent.columns:
-            fig2 = px.bar(df_agent, x='Agent Name', y='PTP', title='PTP by Agent')
-            st.plotly_chart(fig2)
+        sort_by = st.selectbox("Sort by Column", options=df_filtered.columns)
+        df_sorted = df_filtered.sort_values(by=sort_by, ascending=False)
+        st.dataframe(df_sorted, use_container_width=True)
 
-    # KPIs
-    st.markdown("### 📊 Key Performance Indicators")
-    avg_duration = df_agent['Duration'].mean() if 'Duration' in df_agent.columns else 0
-    conversion_rate = (df_agent['PTP'].sum() / df_agent['Total ca'].sum()) * 100 if 'PTP' in df_agent.columns and 'Total ca' in df_agent.columns else 0
-    st.metric("Average Duration", f"{avg_duration:.2f} min")
-    st.metric("Conversion Rate (PTP/Total Calls)", f"{conversion_rate:.2f}%")
+        # Charts
+        st.subheader("📊 Agent Performance Chart")
+        fig = px.bar(df_sorted, x="Agent Name", y="Total Ca", color="Ranking", title="Total Calls per Agent")
+        st.plotly_chart(fig, use_container_width=True)
 
-    # Week-over-week comparison
-    st.markdown("### 📉 Week-over-Week Trends")
-    if 'Week' in df_agent.columns and 'PTP' in df_agent.columns:
-        week_summary = df_agent.groupby('Week').agg({'PTP': 'sum', 'Total ca': 'sum'}).reset_index()
-        week_summary['Conversion Rate'] = (week_summary['PTP'] / week_summary['Total ca']) * 100
-        fig_line = px.line(week_summary, x='Week', y=['PTP', 'Total ca', 'Conversion Rate'], markers=True, title='PTP, Total Calls & Conversion Rate Over Weeks')
-        st.plotly_chart(fig_line)
+        # Export Agent
+        buffer = BytesIO()
+        df_sorted.to_excel(buffer, index=False)
+        st.download_button("📥 Download Agent Report", buffer.getvalue(), file_name="agent_report.xlsx")
 
 except Exception as e:
-    st.warning(f"⚠️ Unable to render dashboard. Ensure files are uploaded with correct structure.\nError: {e}")
+    st.error(f"⚠️ Error: {e}")
