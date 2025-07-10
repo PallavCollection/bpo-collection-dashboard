@@ -96,7 +96,8 @@ else:
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
-    # ... (rest of existing logic) ...
+    # Place your old processing and merging logic here (files: df_paid_prev, df_paid_current, df_alloc, etc.)
+    # Make sure the data is populated before the below block.
 
     # --- Daily Comparison: Current vs Previous Month ---
     if (
