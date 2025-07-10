@@ -188,28 +188,43 @@ else:
             df_paid_all = pd.concat([df_paid_current, df_paid_prev], ignore_index=True)
             df_all = pd.merge(df_alloc, df_paid_all, on='Loan_ID', how='left')
             df_all['Paid_Amount'] = df_all['Paid_Amount'].fillna(0)
-            df_all['Recovery %'] = (df_all['Paid_Amount'] / df_all['Allocated_Amount']).round(2)
+            df_all['Recovery %'] = (df_all['Paid_Amount'] / df_all['Allocated_Amount'] * 100).round(2)
             df_all['Balance'] = df_all['Allocated_Amount'] - df_all['Paid_Amount']
 
             if not df_paid_current.empty:
                 df_current = pd.merge(df_alloc, df_paid_current, on='Loan_ID', how='left')
                 df_current['Paid_Amount'] = df_current['Paid_Amount'].fillna(0)
-                df_current['Recovery %'] = (df_current['Paid_Amount'] / df_current['Allocated_Amount']).round(2)
+                df_current['Recovery %'] = (df_current['Paid_Amount'] / df_current['Allocated_Amount'] * 100).round(2)
                 df_current['Balance'] = df_current['Allocated_Amount'] - df_current['Paid_Amount']
             else:
                 df_current = pd.DataFrame()
 
-            # Debug Preview
-            with st.expander("🧪 Preview Uploaded Data"):
-                st.subheader("Allocation File")
-                st.dataframe(df_alloc.head())
-                st.subheader("Paid Files Combined")
-                st.dataframe(df_paid_all.head())
-
-            if df_all['Paid_Amount'].sum() == 0:
-                st.warning("⚠️ No matching Loan_IDs found between allocation and paid files. Please check your uploaded data.")
-
             process_data[process_name] = {'all': df_all, 'current': df_current}
+
+            with st.expander("📌 Preview Uploaded Data"):
+                st.subheader("Allocation File")
+                st.dataframe(df_alloc)
+                st.subheader("Paid Files Combined")
+                st.dataframe(df_paid_all)
+
+            st.markdown(f"### 📊 Summary for {process_name}")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Allocated", f"₹{df_all['Allocated_Amount'].sum():,.0f}")
+                st.metric("Total Paid", f"₹{df_all['Paid_Amount'].sum():,.0f}")
+            with col2:
+                st.metric("Recovery %", f"{df_all['Recovery %'].mean():.2f}%")
+                st.metric("Total Balance", f"₹{df_all['Balance'].sum():,.0f}")
+
+            st.markdown("### 📊 Recovery % by Bucket")
+            if 'Bucket' in df_all.columns:
+                bucket_df = df_all.groupby('Bucket').agg({
+                    'Allocated_Amount': 'sum',
+                    'Paid_Amount': 'sum'
+                }).reset_index()
+                bucket_df['Recovery %'] = (bucket_df['Paid_Amount'] / bucket_df['Allocated_Amount'] * 100).round(2)
+                fig = px.bar(bucket_df, x='Bucket', y='Recovery %', color='Bucket', text='Recovery %')
+                st.plotly_chart(fig, use_container_width=True)
 
     if not process_data:
         st.warning("⚠️ No valid data found. Please upload required files for at least one process.")
