@@ -1,7 +1,7 @@
-streamlit
-pandas
-openpyxl
-xlsxwriter
-sqlalchemy
-streamlit-aggrid
-plotly
+streamlit==1.35.0
+pandas==2.2.2
+openpyxl==3.1.2
+xlsxwriter==3.2.0
+plotly==5.21.0
+sqlalchemy==2.0.30
+streamlit-extras==0.3.6
