@@ -223,8 +223,18 @@ else:
                     'Paid_Amount': 'sum'
                 }).reset_index()
                 bucket_df['Recovery %'] = (bucket_df['Paid_Amount'] / bucket_df['Allocated_Amount'] * 100).round(2)
-                fig = px.bar(bucket_df, x='Bucket', y='Recovery %', color='Bucket', text='Recovery %')
+                fig = px.bar(bucket_df, x='Bucket', y='Recovery %', color='Bucket', text='Recovery %', title='Recovery % by Bucket')
                 st.plotly_chart(fig, use_container_width=True)
+
+            if not df_current.empty:
+                st.markdown("### 📈 Current Month vs All-Time Recovery")
+                compare_df = pd.DataFrame({
+                    "Type": ["All Time", "Current Month"],
+                    "Recovery %": [df_all['Recovery %'].mean(), df_current['Recovery %'].mean()]
+                })
+                fig_compare = px.bar(compare_df, x="Type", y="Recovery %", color="Type", text="Recovery %",
+                                     color_discrete_sequence=['#636EFA', '#EF553B'], title="Current vs All Time Recovery")
+                st.plotly_chart(fig_compare, use_container_width=True)
 
     if not process_data:
         st.warning("⚠️ No valid data found. Please upload required files for at least one process.")
