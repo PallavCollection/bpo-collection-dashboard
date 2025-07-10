@@ -98,17 +98,38 @@ else:
 
     # ... (rest of existing logic) ...
 
-            if not df_paid_prev.empty and 'Payment_Date' in df_paid_prev.columns:
-                st.markdown("### 🏆 Daily Best Performers: Current vs Previous Month")
-                df_prev_daily = df_paid_prev.copy()
-                df_prev_daily['Payment_Date'] = pd.to_datetime(df_prev_daily['Payment_Date'])
-                df_curr_daily = df_paid_current.copy()
-                df_curr_daily['Payment_Date'] = pd.to_datetime(df_curr_daily['Payment_Date'])
+    if not df_paid_prev.empty and 'Payment_Date' in df_paid_prev.columns:
+        st.markdown("### 🏆 Daily Best Performers: Current vs Previous Month")
 
-                curr_group = df_curr_daily.groupby('Payment_Date')['Paid_Amount'].sum().reset_index(name='Current_Month')
-                prev_group = df_prev_daily.groupby('Payment_Date')['Paid_Amount'].sum().reset_index(name='Previous_Month')
+        df_prev_daily = df_paid_prev.copy()
+        df_prev_daily['Payment_Date'] = pd.to_datetime(df_prev_daily['Payment_Date'])
 
-                daily_compare = pd.merge(curr_group, prev_group, on='Payment_Date', how='outer').fillna(0)
-                daily_compare['Payment_Date'] = daily_compare['Payment_Date'].dt.date
+        df_curr_daily = df_paid_current.copy()
+        df_curr_daily['Payment_Date'] = pd.to_datetime(df_curr_daily['Payment_Date'])
 
-                st.dataframe(daily_compare.sort_values('Payment_Date', ascending=False))
+        curr_group = df_curr_daily.groupby('Payment_Date')['Paid_Amount'].sum().reset_index(name='Current_Month')
+        prev_group = df_prev_daily.groupby('Payment_Date')['Paid_Amount'].sum().reset_index(name='Previous_Month')
+
+        daily_compare = pd.merge(curr_group, prev_group, on='Payment_Date', how='outer').fillna(0)
+        daily_compare['Payment_Date'] = daily_compare['Payment_Date'].dt.date
+
+        st.dataframe(daily_compare.sort_values('Payment_Date', ascending=False))
+
+        st.markdown("### 📊 Daily Performance Comparison Chart")
+        fig = px.bar(daily_compare.sort_values('Payment_Date'),
+                     x='Payment_Date',
+                     y=['Current_Month', 'Previous_Month'],
+                     barmode='group',
+                     title="Daily Recovery: Current vs Previous Month",
+                     labels={'value': 'Paid Amount', 'Payment_Date': 'Date'},
+                     color_discrete_sequence=['#1f77b4', '#ff7f0e'])
+        st.plotly_chart(fig, use_container_width=True)
+
+        fig2 = px.line(daily_compare.sort_values('Payment_Date'),
+                       x='Payment_Date',
+                       y=['Current_Month', 'Previous_Month'],
+                       title="Line Trend: Current vs Previous",
+                       markers=True,
+                       labels={'value': 'Paid Amount', 'Payment_Date': 'Date'},
+                       color_discrete_sequence=['#1f77b4', '#ff7f0e'])
+        st.plotly_chart(fig2, use_container_width=True)
