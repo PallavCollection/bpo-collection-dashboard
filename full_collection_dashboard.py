@@ -137,25 +137,28 @@ else:
 
         if is_editor:
             alloc_files = st.sidebar.file_uploader("📁 Allocation Files", type=["xlsx"], accept_multiple_files=True, key=f"alloc_{i}")
-            if st.sidebar.button(f"🗑️ Delete Allocation File", key=f"del_alloc_{i}"):
+            with st.sidebar.expander("⚙️ Manage Allocation File"):
                 if os.path.exists(alloc_path):
-                    os.remove(alloc_path)
-                    st.sidebar.success("✅ Allocation file deleted.")
-                    st.rerun()
+                    if st.radio(f"Delete Allocation File?", ["No", "Yes"], key=f"confirm_del_alloc_{i}") == "Yes":
+                        os.remove(alloc_path)
+                        st.success("✅ Allocation file deleted.")
+                        st.rerun()
 
             paid_current_files = st.sidebar.file_uploader("📅 Current Month Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_curr_{i}")
-            if st.sidebar.button(f"🗑️ Delete Paid Current File", key=f"del_paidcurr_{i}"):
+            with st.sidebar.expander("⚙️ Manage Paid Current File"):
                 if os.path.exists(paid_current_path):
-                    os.remove(paid_current_path)
-                    st.sidebar.success("✅ Paid Current file deleted.")
-                    st.rerun()
+                    if st.radio(f"Delete Paid Current File?", ["No", "Yes"], key=f"confirm_del_paidcurr_{i}") == "Yes":
+                        os.remove(paid_current_path)
+                        st.success("✅ Paid Current file deleted.")
+                        st.rerun()
 
             paid_prev_files = st.sidebar.file_uploader("🗓️ Previous Months Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_prev_{i}")
-            if st.sidebar.button(f"🗑️ Delete Paid Previous File", key=f"del_paidprev_{i}"):
+            with st.sidebar.expander("⚙️ Manage Paid Previous File"):
                 if os.path.exists(paid_prev_path):
-                    os.remove(paid_prev_path)
-                    st.sidebar.success("✅ Paid Previous file deleted.")
-                    st.rerun()
+                    if st.radio(f"Delete Paid Previous File?", ["No", "Yes"], key=f"confirm_del_paidprev_{i}") == "Yes":
+                        os.remove(paid_prev_path)
+                        st.success("✅ Paid Previous file deleted.")
+                        st.rerun()
 
         if is_editor and alloc_files:
             df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
@@ -197,3 +200,6 @@ else:
                 df_current = pd.DataFrame()
 
             process_data[process_name] = {'all': df_all, 'current': df_current}
+
+    if not process_data:
+        st.warning("⚠️ No valid data found. Please upload required files for at least one process.")
