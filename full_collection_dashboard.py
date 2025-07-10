@@ -6,7 +6,6 @@ import os
 import json
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
-import xlsxwriter
 
 # --- Auto Header Fixer ---
 HEADER_MAPPING = {
@@ -32,20 +31,18 @@ CACHE_DIR = "cache"
 CONFIG_FILE = os.path.join(CACHE_DIR, "config.json")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-ALLOC_PATH = os.path.join(CACHE_DIR, "alloc_file.xlsx")
-PAID_CURR_PATH = os.path.join(CACHE_DIR, "paid_curr_file.xlsx")
-PAID_PREV_PATH = os.path.join(CACHE_DIR, "paid_prev_file.xlsx")
-
 # --- Persistent Config ---
 def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
-    return {}
+    return {"process_count": 1, "process_names": {}}
 
 def save_config(config):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f)
+
+config = load_config()
 
 # --- Session Handling ---
 def load_session():
@@ -95,123 +92,139 @@ if not st.session_state.authenticated:
             st.error("❌ Invalid credentials. View-only mode enabled.")
 else:
     st.set_page_config(page_title="✨ Beautiful Collection Dashboard", layout="wide")
-
-    refresh_interval = st.sidebar.number_input("🔁 Auto-refresh (seconds)", min_value=10, max_value=300, value=60)
-    if datetime.now().second % refresh_interval == 0:
-        st.rerun()
-
     st.markdown("<h1 style='text-align: center; color: navy;'>📊 Collection BPO Dashboard</h1>", unsafe_allow_html=True)
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
-    st.sidebar.header("📂 Upload Files")
+    if is_editor:
+        with st.sidebar:
+            if st.button("➕ Add Process"):
+                config['process_count'] += 1
+                save_config(config)
+            if config['process_count'] > 1 and st.button("➖ Remove Process"):
+                config['process_count'] -= 1
+                save_config(config)
 
-    # --- File Uploads and Delete Options ---
-    alloc_file = st.sidebar.file_uploader("Upload Allocation File", type=["xlsx"], key="alloc")
-    if alloc_file:
-        df_alloc = pd.read_excel(alloc_file)
-        df_alloc = clean_headers(df_alloc)
-        df_alloc.to_excel(ALLOC_PATH, index=False)
-    elif os.path.exists(ALLOC_PATH):
-        df_alloc = pd.read_excel(ALLOC_PATH)
-    else:
-        df_alloc = pd.DataFrame()
+    # Agent performance file upload
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("👤 Upload Agent Performance")
+    agent_file = st.sidebar.file_uploader("Upload Agent Performance Excel", type=["xlsx"])
+    if agent_file:
+        agent_df = pd.read_excel(agent_file)
+        agent_df = clean_headers(agent_df)
 
-    if os.path.exists(ALLOC_PATH):
-        if st.sidebar.button("❌ Delete Allocation File"):
-            if st.sidebar.radio("Are you sure?", ["No", "Yes"], key="del_alloc") == "Yes":
-                os.remove(ALLOC_PATH)
-                st.rerun()
+    process_data = {}
 
-    paid_curr_file = st.sidebar.file_uploader("Upload Paid File (Current Month)", type=["xlsx"], key="paid_curr")
-    if paid_curr_file:
-        df_paid_current = pd.read_excel(paid_curr_file)
-        df_paid_current = clean_headers(df_paid_current)
-        df_paid_current.to_excel(PAID_CURR_PATH, index=False)
-    elif os.path.exists(PAID_CURR_PATH):
-        df_paid_current = pd.read_excel(PAID_CURR_PATH)
-    else:
-        df_paid_current = pd.DataFrame()
+    for i in range(config['process_count']):
+        st.sidebar.markdown("---")
+        st.sidebar.subheader(f"📂 Process {i+1}")
 
-    if os.path.exists(PAID_CURR_PATH):
-        if st.sidebar.button("❌ Delete Paid Current File"):
-            if st.sidebar.radio("Are you sure?", ["No", "Yes"], key="del_curr") == "Yes":
-                os.remove(PAID_CURR_PATH)
-                st.rerun()
+        process_key = f"process_{i+1}"
+        default_name = config["process_names"].get(process_key, f"Process_{i+1}")
 
-    paid_prev_file = st.sidebar.file_uploader("Upload Paid File (Previous Month)", type=["xlsx"], key="paid_prev")
-    if paid_prev_file:
-        df_paid_prev = pd.read_excel(paid_prev_file)
-        df_paid_prev = clean_headers(df_paid_prev)
-        df_paid_prev.to_excel(PAID_PREV_PATH, index=False)
-    elif os.path.exists(PAID_PREV_PATH):
-        df_paid_prev = pd.read_excel(PAID_PREV_PATH)
-    else:
-        df_paid_prev = pd.DataFrame()
+        if is_editor:
+            new_name = st.sidebar.text_input(f"Name for Process {i+1}", value=default_name, key=f"name_input_{i}")
+            config["process_names"][process_key] = new_name
+            save_config(config)
+        else:
+            st.sidebar.text(f"Name: {default_name}")
 
-    if os.path.exists(PAID_PREV_PATH):
-        if st.sidebar.button("❌ Delete Paid Previous File"):
-            if st.sidebar.radio("Are you sure?", ["No", "Yes"], key="del_prev") == "Yes":
-                os.remove(PAID_PREV_PATH)
-                st.rerun()
+        process_name = config["process_names"][process_key]
 
-    # --- Daily Comparison: Current vs Previous Month ---
-    if (
-        not df_paid_prev.empty and 'Payment_Date' in df_paid_prev.columns and
-        not df_paid_current.empty and 'Payment_Date' in df_paid_current.columns
-    ):
-        st.markdown("### 🏆 Daily Best Performers: Current vs Previous Month")
+        alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
+        paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
+        paid_prev_path = f"{CACHE_DIR}/paid_prev_{process_name}.csv"
 
-        df_prev_daily = df_paid_prev.copy()
-        df_prev_daily['Payment_Date'] = pd.to_datetime(df_prev_daily['Payment_Date'], errors='coerce')
+        if is_editor:
+            alloc_files = st.sidebar.file_uploader("📁 Allocation Files", type=["xlsx"], accept_multiple_files=True, key=f"alloc_{i}")
+            with st.sidebar.expander("⚙ Manage Allocation File"):
+                if os.path.exists(alloc_path):
+                    if st.radio(f"Delete Allocation File?", ["No", "Yes"], key=f"confirm_del_alloc_{i}") == "Yes":
+                        os.remove(alloc_path)
+                        st.success("✅ Allocation file deleted.")
+                        st.rerun()
 
-        df_curr_daily = df_paid_current.copy()
-        df_curr_daily['Payment_Date'] = pd.to_datetime(df_curr_daily['Payment_Date'], errors='coerce')
+            paid_current_files = st.sidebar.file_uploader("📅 Current Month Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_curr_{i}")
+            with st.sidebar.expander("⚙ Manage Paid Current File"):
+                if os.path.exists(paid_current_path):
+                    if st.radio(f"Delete Paid Current File?", ["No", "Yes"], key=f"confirm_del_paidcurr_{i}") == "Yes":
+                        os.remove(paid_current_path)
+                        st.success("✅ Paid Current file deleted.")
+                        st.rerun()
 
-        curr_group = df_curr_daily.groupby('Payment_Date')['Paid_Amount'].sum().reset_index(name='Current_Month')
-        prev_group = df_prev_daily.groupby('Payment_Date')['Paid_Amount'].sum().reset_index(name='Previous_Month')
+            paid_prev_files = st.sidebar.file_uploader("🗓 Previous Months Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_prev_{i}")
+            with st.sidebar.expander("⚙ Manage Paid Previous File"):
+                if os.path.exists(paid_prev_path):
+                    if st.radio(f"Delete Paid Previous File?", ["No", "Yes"], key=f"confirm_del_paidprev_{i}") == "Yes":
+                        os.remove(paid_prev_path)
+                        st.success("✅ Paid Previous file deleted.")
+                        st.rerun()
 
-        daily_compare = pd.merge(curr_group, prev_group, on='Payment_Date', how='outer').fillna(0)
-        daily_compare['Payment_Date'] = daily_compare['Payment_Date'].dt.date
+        if is_editor and alloc_files:
+            df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
+            df_alloc.to_csv(alloc_path, index=False)
+        elif os.path.exists(alloc_path):
+            df_alloc = pd.read_csv(alloc_path)
+        else:
+            df_alloc = pd.DataFrame()
 
-        st.dataframe(daily_compare.sort_values('Payment_Date', ascending=False))
+        if is_editor and paid_current_files:
+            df_paid_current = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_current_files], ignore_index=True)
+            df_paid_current.to_csv(paid_current_path, index=False)
+        elif os.path.exists(paid_current_path):
+            df_paid_current = pd.read_csv(paid_current_path)
+        else:
+            df_paid_current = pd.DataFrame()
 
-        st.markdown("### 📊 Daily Performance Comparison Chart")
-        fig = px.bar(daily_compare.sort_values('Payment_Date'),
-                     x='Payment_Date',
-                     y=['Current_Month', 'Previous_Month'],
-                     barmode='group',
-                     title="Daily Recovery: Current vs Previous Month",
-                     labels={'value': 'Paid Amount', 'Payment_Date': 'Date'},
-                     color_discrete_sequence=['#1f77b4', '#ff7f0e'])
-        st.plotly_chart(fig, use_container_width=True)
+        if is_editor and paid_prev_files:
+            df_paid_prev = pd.concat([clean_headers(pd.read_excel(f)) for f in paid_prev_files], ignore_index=True)
+            df_paid_prev.to_csv(paid_prev_path, index=False)
+        elif os.path.exists(paid_prev_path):
+            df_paid_prev = pd.read_csv(paid_prev_path)
+        else:
+            df_paid_prev = pd.DataFrame()
 
-        fig2 = px.line(daily_compare.sort_values('Payment_Date'),
-                       x='Payment_Date',
-                       y=['Current_Month', 'Previous_Month'],
-                       title="Line Trend: Current vs Previous",
-                       markers=True,
-                       labels={'value': 'Paid Amount', 'Payment_Date': 'Date'},
-                       color_discrete_sequence=['#1f77b4', '#ff7f0e'])
-        st.plotly_chart(fig2, use_container_width=True)
+        if not df_alloc.empty and (not df_paid_current.empty or not df_paid_prev.empty):
+            df_paid_all = pd.concat([df_paid_current, df_paid_prev], ignore_index=True)
+            df_all = pd.merge(df_alloc, df_paid_all, on='Loan_ID', how='left')
+            df_all['Paid_Amount'] = df_all['Paid_Amount'].fillna(0)
+            df_all['Recovery %'] = (df_all['Paid_Amount'] / df_all['Allocated_Amount'] * 100).round(2)
+            df_all['Balance'] = df_all['Allocated_Amount'] - df_all['Paid_Amount']
 
-        # --- Download Option: CSV ---
-        st.markdown("### 📥 Download Daily Comparison")
-        csv_data = daily_compare.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📄 Download as CSV",
-            data=csv_data,
-            file_name="daily_comparison.csv",
-            mime='text/csv'
-        )
+            if not df_paid_current.empty:
+                df_current = pd.merge(df_alloc, df_paid_current, on='Loan_ID', how='left')
+                df_current['Paid_Amount'] = df_current['Paid_Amount'].fillna(0)
+                df_current['Recovery %'] = (df_current['Paid_Amount'] / df_current['Allocated_Amount'] * 100).round(2)
+                df_current['Balance'] = df_current['Allocated_Amount'] - df_current['Paid_Amount']
+            else:
+                df_current = pd.DataFrame()
 
-        # --- Download Option: Excel ---
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            daily_compare.to_excel(writer, index=False, sheet_name='DailyComparison')
-        st.download_button(
-            label="📊 Download as Excel",
-            data=output.getvalue(),
-            file_name="daily_comparison.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            process_data[process_name] = {'all': df_all, 'current': df_current}
+
+            with st.expander("📌 Preview Uploaded Data"):
+                st.subheader("Allocation File")
+                st.dataframe(df_alloc)
+                st.subheader("Paid Files Combined")
+                st.dataframe(df_paid_all)
+
+            st.markdown(f"### 📊 Summary for {process_name}")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Allocated", f"₹{df_all['Allocated_Amount'].sum():,.0f}")
+                st.metric("Total Paid", f"₹{df_all['Paid_Amount'].sum():,.0f}")
+            with col2:
+                st.metric("Recovery %", f"{df_all['Recovery %'].mean():.2f}%")
+                st.metric("Total Balance", f"₹{df_all['Balance'].sum():,.0f}")
+
+            st.markdown("### 📊 Recovery % by Bucket")
+            if 'Bucket' in df_all.columns:
+                bucket_df = df_all.groupby('Bucket').agg({
+                    'Allocated_Amount': 'sum',
+                    'Paid_Amount': 'sum'
+                }).reset_index()
+                bucket_df['Recovery %'] = (bucket_df['Paid_Amount'] / bucket_df['Allocated_Amount'] * 100).round(2)
+                fig = px.bar(bucket_df, x='Bucket', y='Recovery %', color='Bucket', text='Recovery %')
+                st.plotly_chart(fig, use_container_width=True)
+
+    if not process_data:
+        st.warning("⚠ No valid data found. Please upload required files for at least one process.")
