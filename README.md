@@ -1,19 +1,36 @@
+# 📊 BPO Collection Dashboard
 
-# Collection Dashboard
+This is a secure and interactive Streamlit dashboard designed for BPO collection analysis. It compares allocation vs. recovery and includes a daily current vs. previous month performance tracker.
 
-A Streamlit-based BPO collection dashboard that supports:
-- Multi-process file upload and analysis
-- Secure editor-only access (editable only with login)
-- Auto-header correction for uploaded Excel files
-- CSV and Excel export options
+## 🚀 Features
 
-## How to Run
+- Secure login with session control
+- Upload allocation and paid files (Current & Previous Month)
+- Auto-clean column headers
+- Daily performance comparison (current vs. previous)
+- Charts: Bar + Line trends
+- Download reports (CSV & Excel)
+- Auto-refresh support
+- Admin file delete option
+
+## 🗂 File Uploads
+
+Upload the following:
+- `alloc_file.xlsx` – Allocation data
+- `paid_curr_file.xlsx` – Paid file (current month)
+- `paid_prev_file.xlsx` – Paid file (previous month)
+
+> Ensure column headers like `loan_id`, `allocated_amount`, `paid_amount`, `payment_date`, `bucket`, `agency` are properly mapped.
+
+## 🔒 Login
+
+Use the following credentials:
+
+- **Email:** `jjagarbattiudyog@gmail.com`
+- **Password:** `Sanu@1998`
+
+## 🛠 Run the App
 
 ```bash
 pip install -r requirements.txt
-streamlit run collection_dashboard_beautiful.py
-```
-
-## Login
-- **Email**: jjagarbattiudyog@gmail.com
-- **Password**: Sanu@1998
+streamlit run full_collection_dashboard.py
