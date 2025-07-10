@@ -98,14 +98,18 @@ else:
 
     # ... (rest of existing logic) ...
 
-    if not df_paid_prev.empty and 'Payment_Date' in df_paid_prev.columns:
+    # --- Daily Comparison: Current vs Previous Month ---
+    if (
+        'df_paid_prev' in locals() and isinstance(df_paid_prev, pd.DataFrame) and not df_paid_prev.empty and 'Payment_Date' in df_paid_prev.columns and
+        'df_paid_current' in locals() and isinstance(df_paid_current, pd.DataFrame) and not df_paid_current.empty and 'Payment_Date' in df_paid_current.columns
+    ):
         st.markdown("### 🏆 Daily Best Performers: Current vs Previous Month")
 
         df_prev_daily = df_paid_prev.copy()
-        df_prev_daily['Payment_Date'] = pd.to_datetime(df_prev_daily['Payment_Date'])
+        df_prev_daily['Payment_Date'] = pd.to_datetime(df_prev_daily['Payment_Date'], errors='coerce')
 
         df_curr_daily = df_paid_current.copy()
-        df_curr_daily['Payment_Date'] = pd.to_datetime(df_curr_daily['Payment_Date'])
+        df_curr_daily['Payment_Date'] = pd.to_datetime(df_curr_daily['Payment_Date'], errors='coerce')
 
         curr_group = df_curr_daily.groupby('Payment_Date')['Paid_Amount'].sum().reset_index(name='Current_Month')
         prev_group = df_prev_daily.groupby('Payment_Date')['Paid_Amount'].sum().reset_index(name='Previous_Month')
