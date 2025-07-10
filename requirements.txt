@@ -1,8 +1,8 @@
+
 streamlit==1.34.0
 pandas
 plotly
 openpyxl
 xlsxwriter
 sqlalchemy
-fpdf2
-kaleido
+fpdf
