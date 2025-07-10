@@ -199,6 +199,16 @@ else:
             else:
                 df_current = pd.DataFrame()
 
+            # Debug Preview
+            with st.expander("🧪 Preview Uploaded Data"):
+                st.subheader("Allocation File")
+                st.dataframe(df_alloc.head())
+                st.subheader("Paid Files Combined")
+                st.dataframe(df_paid_all.head())
+
+            if df_all['Paid_Amount'].sum() == 0:
+                st.warning("⚠️ No matching Loan_IDs found between allocation and paid files. Please check your uploaded data.")
+
             process_data[process_name] = {'all': df_all, 'current': df_current}
 
     if not process_data:
