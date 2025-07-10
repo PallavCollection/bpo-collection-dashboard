@@ -6,6 +6,9 @@ import os
 import json
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
+import xlsxwriter
+import smtplib
+from email.message import EmailMessage
 
 # --- Auto Header Fixer ---
 HEADER_MAPPING = {
@@ -96,13 +99,36 @@ else:
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
-    # Place your old processing and merging logic here (files: df_paid_prev, df_paid_current, df_alloc, etc.)
-    # Make sure the data is populated before the below block.
+    st.sidebar.header("📂 Upload Files")
+    df_paid_prev = df_paid_current = None
+
+    alloc_file = st.sidebar.file_uploader("Upload Allocation File", type=["xlsx"], key="alloc")
+    if alloc_file:
+        df_alloc = pd.read_excel(alloc_file)
+        df_alloc = clean_headers(df_alloc)
+        st.session_state.df_alloc = df_alloc
+
+    paid_curr_file = st.sidebar.file_uploader("Upload Paid File (Current Month)", type=["xlsx"], key="paid_curr")
+    if paid_curr_file:
+        df_paid_current = pd.read_excel(paid_curr_file)
+        df_paid_current = clean_headers(df_paid_current)
+        st.session_state.df_paid_current = df_paid_current
+
+    paid_prev_file = st.sidebar.file_uploader("Upload Paid File (Previous Month)", type=["xlsx"], key="paid_prev")
+    if paid_prev_file:
+        df_paid_prev = pd.read_excel(paid_prev_file)
+        df_paid_prev = clean_headers(df_paid_prev)
+        st.session_state.df_paid_prev = df_paid_prev
+
+    # Reload from session if needed
+    df_alloc = st.session_state.get('df_alloc')
+    df_paid_current = st.session_state.get('df_paid_current')
+    df_paid_prev = st.session_state.get('df_paid_prev')
 
     # --- Daily Comparison: Current vs Previous Month ---
     if (
-        'df_paid_prev' in locals() and isinstance(df_paid_prev, pd.DataFrame) and not df_paid_prev.empty and 'Payment_Date' in df_paid_prev.columns and
-        'df_paid_current' in locals() and isinstance(df_paid_current, pd.DataFrame) and not df_paid_current.empty and 'Payment_Date' in df_paid_current.columns
+        isinstance(df_paid_prev, pd.DataFrame) and not df_paid_prev.empty and 'Payment_Date' in df_paid_prev.columns and
+        isinstance(df_paid_current, pd.DataFrame) and not df_paid_current.empty and 'Payment_Date' in df_paid_current.columns
     ):
         st.markdown("### 🏆 Daily Best Performers: Current vs Previous Month")
 
@@ -138,3 +164,47 @@ else:
                        labels={'value': 'Paid Amount', 'Payment_Date': 'Date'},
                        color_discrete_sequence=['#1f77b4', '#ff7f0e'])
         st.plotly_chart(fig2, use_container_width=True)
+
+        st.markdown("### 📥 Download Daily Comparison")
+        csv_data = daily_compare.to_csv(index=False).encode('utf-8')
+        st.download_button("📄 Download as CSV", data=csv_data, file_name="daily_comparison.csv", mime='text/csv')
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            daily_compare.to_excel(writer, index=False, sheet_name='DailyComparison')
+            writer.save()
+        st.download_button("📊 Download as Excel", data=output.getvalue(), file_name="daily_comparison.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # --- Export All Data ---
+    if df_alloc is not None and (df_paid_current is not None or df_paid_prev is not None):
+        st.markdown("### 📦 Download All Data")
+        output_all = io.BytesIO()
+        with pd.ExcelWriter(output_all, engine='xlsxwriter') as writer:
+            df_alloc.to_excel(writer, index=False, sheet_name='Allocation')
+            if df_paid_current is not None:
+                df_paid_current.to_excel(writer, index=False, sheet_name='Paid_Current')
+            if df_paid_prev is not None:
+                df_paid_prev.to_excel(writer, index=False, sheet_name='Paid_Previous')
+            writer.save()
+        st.download_button("📥 Export All as Excel", data=output_all.getvalue(), file_name="full_data_export.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        # Email Option
+        if st.button("📧 Email this Excel file"):
+            try:
+                email_address = "your_email@gmail.com"  # replace
+                app_password = "your_app_password"  # replace
+                msg = EmailMessage()
+                msg['Subject'] = 'Collection Export Data'
+                msg['From'] = email_address
+                msg['To'] = st.session_state.user_email
+                msg.set_content("Please find attached the exported data.")
+
+                msg.add_attachment(output_all.getvalue(), maintype='application', subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename='full_data_export.xlsx')
+
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                    smtp.login(email_address, app_password)
+                    smtp.send_message(msg)
+
+                st.success("✅ Email sent successfully!")
+            except Exception as e:
+                st.error(f"❌ Email failed: {e}")
