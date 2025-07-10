@@ -6,6 +6,9 @@ import os
 import json
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
+from fpdf import FPDF
+from fpdf.enums import XPos, YPos
+import tempfile
 
 # --- Auto Header Fixer ---
 HEADER_MAPPING = {
@@ -18,7 +21,8 @@ HEADER_MAPPING = {
     "paymentdate": "Payment_Date",
     "payment_date": "Payment_Date",
     "bucket": "Bucket",
-    "agency": "Agency"
+    "agency": "Agency",
+    "zone": "Zone"
 }
 
 def clean_headers(df):
@@ -96,6 +100,8 @@ else:
 
     is_editor = st.session_state.user_email == "jjagarbattiudyog@gmail.com"
 
+    selected_process = st.selectbox("🔽 Select Process", [config["process_names"].get(f"process_{i+1}", f"Process_{i+1}") for i in range(config['process_count'])])
+
     if is_editor:
         with st.sidebar:
             if st.button("➕ Add Process"):
@@ -105,7 +111,6 @@ else:
                 config['process_count'] -= 1
                 save_config(config)
 
-    # Agent performance file upload
     st.sidebar.markdown("---")
     st.sidebar.subheader("👤 Upload Agent Performance")
     agent_file = st.sidebar.file_uploader("Upload Agent Performance Excel", type=["xlsx"])
@@ -116,20 +121,23 @@ else:
     process_data = {}
 
     for i in range(config['process_count']):
-        st.sidebar.markdown("---")
-        st.sidebar.subheader(f"📂 Process {i+1}")
-
         process_key = f"process_{i+1}"
         default_name = config["process_names"].get(process_key, f"Process_{i+1}")
 
+        if default_name != selected_process:
+            continue
+
+        st.sidebar.markdown("---")
+        st.sidebar.subheader(f"📂 {default_name}")
+
         if is_editor:
-            new_name = st.sidebar.text_input(f"Name for Process {i+1}", value=default_name, key=f"name_input_{i}")
+            new_name = st.sidebar.text_input(f"Name for {default_name}", value=default_name, key=f"name_input_{i}")
             config["process_names"][process_key] = new_name
             save_config(config)
         else:
             st.sidebar.text(f"Name: {default_name}")
 
-        process_name = config["process_names"][process_key]
+        process_name = config["process_names"].get(process_key, f"Process_{i+1}")
 
         alloc_path = f"{CACHE_DIR}/alloc_{process_name}.csv"
         paid_current_path = f"{CACHE_DIR}/paid_current_{process_name}.csv"
@@ -137,28 +145,8 @@ else:
 
         if is_editor:
             alloc_files = st.sidebar.file_uploader("📁 Allocation Files", type=["xlsx"], accept_multiple_files=True, key=f"alloc_{i}")
-            with st.sidebar.expander("⚙ Manage Allocation File"):
-                if os.path.exists(alloc_path):
-                    if st.radio(f"Delete Allocation File?", ["No", "Yes"], key=f"confirm_del_alloc_{i}") == "Yes":
-                        os.remove(alloc_path)
-                        st.success("✅ Allocation file deleted.")
-                        st.rerun()
-
             paid_current_files = st.sidebar.file_uploader("📅 Current Month Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_curr_{i}")
-            with st.sidebar.expander("⚙ Manage Paid Current File"):
-                if os.path.exists(paid_current_path):
-                    if st.radio(f"Delete Paid Current File?", ["No", "Yes"], key=f"confirm_del_paidcurr_{i}") == "Yes":
-                        os.remove(paid_current_path)
-                        st.success("✅ Paid Current file deleted.")
-                        st.rerun()
-
             paid_prev_files = st.sidebar.file_uploader("🗓 Previous Months Paid", type=["xlsx"], accept_multiple_files=True, key=f"paid_prev_{i}")
-            with st.sidebar.expander("⚙ Manage Paid Previous File"):
-                if os.path.exists(paid_prev_path):
-                    if st.radio(f"Delete Paid Previous File?", ["No", "Yes"], key=f"confirm_del_paidprev_{i}") == "Yes":
-                        os.remove(paid_prev_path)
-                        st.success("✅ Paid Previous file deleted.")
-                        st.rerun()
 
         if is_editor and alloc_files:
             df_alloc = pd.concat([clean_headers(pd.read_excel(f)) for f in alloc_files], ignore_index=True)
@@ -201,12 +189,6 @@ else:
 
             process_data[process_name] = {'all': df_all, 'current': df_current}
 
-            with st.expander("📌 Preview Uploaded Data"):
-                st.subheader("Allocation File")
-                st.dataframe(df_alloc)
-                st.subheader("Paid Files Combined")
-                st.dataframe(df_paid_all)
-
             st.markdown(f"### 📊 Summary for {process_name}")
             col1, col2 = st.columns(2)
             with col1:
@@ -215,6 +197,57 @@ else:
             with col2:
                 st.metric("Recovery %", f"{df_all['Recovery %'].mean():.2f}%")
                 st.metric("Total Balance", f"₹{df_all['Balance'].sum():,.0f}")
+
+            st.markdown("### 🔎 Filter Data")
+            if 'Agency' in df_all.columns:
+                selected_agency = st.selectbox("Select Agency", options=["All"] + sorted(df_all['Agency'].dropna().unique().tolist()))
+                if selected_agency != "All":
+                    df_all = df_all[df_all['Agency'] == selected_agency]
+
+            if 'Zone' in df_all.columns:
+                selected_zone = st.selectbox("Select Zone", options=["All"] + sorted(df_all['Zone'].dropna().unique().tolist()))
+                if selected_zone != "All":
+                    df_all = df_all[df_all['Zone'] == selected_zone]
+
+            if 'Bucket' in df_all.columns:
+                selected_bucket = st.selectbox("Select Bucket", options=["All"] + sorted(df_all['Bucket'].dropna().unique().tolist()))
+                if selected_bucket != "All":
+                    df_all = df_all[df_all['Bucket'] == selected_bucket]
+
+            if 'Payment_Date' in df_all.columns:
+                df_all['Payment_Date'] = pd.to_datetime(df_all['Payment_Date'], errors='coerce')
+                min_date = df_all['Payment_Date'].min()
+                max_date = df_all['Payment_Date'].max()
+                start_date, end_date = st.date_input("Select Date Range", value=(min_date, max_date))
+                df_all = df_all[(df_all['Payment_Date'] >= pd.to_datetime(start_date)) & (df_all['Payment_Date'] <= pd.to_datetime(end_date))]
+
+            st.markdown("### 📥 Export to Excel")
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_all.to_excel(writer, sheet_name='Data', index=False)
+            st.download_button(label="📤 Download Excel", data=output.getvalue(), file_name=f"{process_name}_report.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+            st.markdown("### 🖨 Export to PDF (with Chart)")
+            chart_buf = io.BytesIO()
+            fig_pdf = px.bar(df_all.groupby('Bucket')[['Allocated_Amount', 'Paid_Amount']].sum().reset_index(), x='Bucket', y=['Allocated_Amount', 'Paid_Amount'], barmode='group')
+            fig_pdf.write_image(chart_buf, format='png')
+            chart_buf.seek(0)
+
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            pdf.cell(200, 10, txt=f"Summary Report: {process_name}", ln=True, align='C')
+            pdf.cell(200, 10, txt=f"Total Allocated: ₹{df_all['Allocated_Amount'].sum():,.0f}", ln=True)
+            pdf.cell(200, 10, txt=f"Total Paid: ₹{df_all['Paid_Amount'].sum():,.0f}", ln=True)
+            pdf.cell(200, 10, txt=f"Recovery %: {df_all['Recovery %'].mean():.2f}%", ln=True)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_chart:
+                tmp_chart.write(chart_buf.read())
+                tmp_chart.flush()
+                pdf.image(tmp_chart.name, x=10, y=60, w=180)
+
+            pdf_output = io.BytesIO()
+            pdf.output(pdf_output)
+            st.download_button("📄 Download PDF", data=pdf_output.getvalue(), file_name=f"{process_name}_summary.pdf", mime="application/pdf")
 
             st.markdown("### 📊 Recovery % by Bucket")
             if 'Bucket' in df_all.columns:
@@ -225,6 +258,23 @@ else:
                 bucket_df['Recovery %'] = (bucket_df['Paid_Amount'] / bucket_df['Allocated_Amount'] * 100).round(2)
                 fig = px.bar(bucket_df, x='Bucket', y='Recovery %', color='Bucket', text='Recovery %')
                 st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("### 🧾 Current Paid vs Previous Best Performance")
+            if not df_current.empty and not df_paid_prev.empty:
+                current_perf = df_current['Paid_Amount'].sum()
+                prev_perf = df_paid_prev.groupby('Loan_ID')['Paid_Amount'].sum().sum()
+                comparison_df = pd.DataFrame({
+                    'Period': ['Current Month', 'Previous Months'],
+                    'Paid_Amount': [current_perf, prev_perf]
+                })
+                fig = px.bar(comparison_df, x='Period', y='Paid_Amount', text='Paid_Amount', color='Period')
+                st.plotly_chart(fig, use_container_width=True)
+
+            with st.expander("📌 Preview Uploaded Data"):
+                st.subheader("Allocation File")
+                st.dataframe(df_alloc.sort_values(by='Paid_Amount', ascending=False))
+                st.subheader("Paid Files Combined")
+                st.dataframe(df_paid_all.sort_values(by='Paid_Amount', ascending=False))
 
     if not process_data:
         st.warning("⚠ No valid data found. Please upload required files for at least one process.")
