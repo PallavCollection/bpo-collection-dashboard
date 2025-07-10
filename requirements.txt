@@ -4,3 +4,5 @@ plotly
 openpyxl
 xlsxwriter
 sqlalchemy
+fpdf2
+kaleido
