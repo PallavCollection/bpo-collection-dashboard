@@ -9,16 +9,6 @@ from io import BytesIO
 # ✅ MUST be the first Streamlit command
 st.set_page_config(page_title="📊 Collection BPO Dashboard", layout="wide")
 
-# ✅ DEMO CHART (Optional)
-demo_df = pd.DataFrame({
-    'Username': ['Amit', 'Pooja', 'Ravi'],
-    'Score': [88, 92, 79]
-})
-demo_fig = px.bar(demo_df, x='Username', y='Score', title='Demo Agent Scores')
-st.plotly_chart(demo_fig, use_container_width=True)
-
-# Continue with the rest of the script...
-
 # Constants
 ADMIN_EMAIL = "jjagarbattiudyog@gmail.com"
 ADMIN_PASSWORD = "Sanu@1998"
@@ -82,6 +72,13 @@ st.title("📊 Collection BPO Dashboard")
 
 # Role check
 is_editor = st.session_state.role == "editor"
+# ✅ DEMO CHART
+demo_df = pd.DataFrame({
+    'Username': ['Amit', 'Pooja', 'Ravi'],
+    'Score': [88, 92, 79]
+})
+demo_fig = px.bar(demo_df, x='Username', y='Score', title='Demo Agent Scores')
+st.plotly_chart(demo_fig, use_container_width=True)
 
 # Sidebar refresh and logout
 if st.sidebar.button("🔒 Logout"):
