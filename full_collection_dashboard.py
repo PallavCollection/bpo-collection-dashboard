@@ -2,11 +2,11 @@ import streamlit as st
 import pandas as pd
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 import plotly.express as px
 from io import BytesIO
 
-# ✅ MUST be the first Streamlit command
+# ✅ First Streamlit command
 st.set_page_config(page_title="📊 Collection BPO Dashboard", layout="wide")
 
 # Constants
@@ -18,7 +18,14 @@ DATA_DIR = "uploaded_data"
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Utility functions for session
+# ✅ Clean column headers
+def clean_columns(df):
+    df.columns = [str(col).strip().replace('\n', ' ').replace('.', '').title() for col in df.columns]
+    df = df.loc[:, ~df.columns.duplicated()]
+    df = df.loc[:, df.columns != '']
+    return df
+
+# Cache for reading Excel
 @st.cache_data
 def load_data(path):
     return pd.read_excel(path)
@@ -45,7 +52,7 @@ def authenticate_user(email, password):
     else:
         return None
 
-# UI: Login
+# Login UI
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -65,19 +72,8 @@ if not st.session_state.authenticated:
             st.error("❌ Invalid credentials. View-only mode enabled.")
     st.stop()
 
-# UI Title
 st.title("📊 Collection BPO Dashboard")
-
-# Role check
 is_editor = st.session_state.role == "editor"
-
-# ✅ DEMO CHART — for testing
-demo_df = pd.DataFrame({
-    'Username': ['Amit', 'Pooja', 'Ravi'],
-    'Score': [88, 92, 79]
-})
-demo_fig = px.bar(demo_df, x='Username', y='Score', title='Demo Agent Scores')
-st.plotly_chart(demo_fig, use_container_width=True)
 
 # Sidebar refresh and logout
 if st.sidebar.button("🔒 Logout"):
@@ -110,13 +106,10 @@ if is_editor:
             st.session_state.processes.append(new_process)
             st.experimental_rerun()
 
-# Upload Section per process
 process_path = os.path.join(DATA_DIR, selected_process)
 os.makedirs(process_path, exist_ok=True)
-
 st.sidebar.markdown(f"### 📁 {selected_process}")
 
-# Helper to save files
 def save_uploaded_file(uploaded_file, folder):
     save_path = os.path.join(process_path, folder)
     os.makedirs(save_path, exist_ok=True)
@@ -136,20 +129,21 @@ folders = {
 uploaded_data = {}
 
 for label, key in folders.items():
-    st.sidebar.markdown(f"### {label}")
-    file = st.sidebar.file_uploader(f"Upload {label}", type=["xlsx"], key=f"{selected_process}_{key}")
-    if file:
-        path = save_uploaded_file(file, key)
-        uploaded_data[key] = path
+    with st.sidebar.expander(f"📁 {label}", expanded=False):
+        file = st.file_uploader(f"Upload {label}", type=["xlsx"], key=f"{selected_process}_{key}")
+        if file:
+            path = save_uploaded_file(file, key)
+            uploaded_data[key] = path
 
-# Delete button for data
+# Delete button
 if is_editor:
-    if st.sidebar.button("🗑 Delete Data"):
-        import shutil
-        shutil.rmtree(process_path)
-        st.session_state.processes.remove(selected_process)
-        st.success("Deleted data.")
-        st.experimental_rerun()
+    with st.sidebar.expander("🗑 Admin Tools", expanded=False):
+        if st.button("Delete Data"):
+            import shutil
+            shutil.rmtree(process_path)
+            st.session_state.processes.remove(selected_process)
+            st.success("Deleted data.")
+            st.experimental_rerun()
 
 # Load and process data
 try:
@@ -158,11 +152,8 @@ try:
     agent_file = uploaded_data.get("agent")
 
     if alloc_file and paid_file:
-        df_alloc = load_data(alloc_file)
-        df_paid = load_data(paid_file)
-
-        df_alloc.columns = [col.strip().title() for col in df_alloc.columns]
-        df_paid.columns = [col.strip().title() for col in df_paid.columns]
+        df_alloc = clean_columns(load_data(alloc_file))
+        df_paid = clean_columns(load_data(paid_file))
 
         merged = pd.merge(df_alloc, df_paid, on="Loan Id", how="inner")
         st.subheader("📌 Merged Allocation & Paid Data")
@@ -173,8 +164,7 @@ try:
         st.download_button("📥 Download Merged Report", output.getvalue(), file_name="merged_report.xlsx")
 
     if agent_file:
-        df_agent = load_data(agent_file)
-        df_agent.columns = [col.strip().title() for col in df_agent.columns]
+        df_agent = clean_columns(load_data(agent_file))
         st.subheader("🧑‍💼 Agent Performance")
         st.dataframe(df_agent, use_container_width=True)
 
@@ -186,12 +176,30 @@ try:
         st.dataframe(df_sorted, use_container_width=True)
 
         st.subheader("📊 Agent Performance Chart")
-        fig = px.bar(df_sorted, x="Agent Name", y="Total Ca", color="Ranking", title="Total Calls per Agent")
-        st.plotly_chart(fig, use_container_width=True)
+        st.markdown(f"🧾 Columns in uploaded file: `{', '.join(df_sorted.columns)}`")
 
-        buffer = BytesIO()
-        df_sorted.to_excel(buffer, index=False)
-        st.download_button("📥 Download Agent Report", buffer.getvalue(), file_name="agent_report.xlsx")
+        # Auto-detect columns
+        name_columns = ['Username', 'Agent Name', 'Name']
+        score_columns = ['Score', 'Total Ca', 'Total Calls', 'Converted_Ptps', 'Wp_Poc']
+
+        x_col = next((col for col in name_columns if col in df_sorted.columns), None)
+        y_col = next((col for col in score_columns if col in df_sorted.columns and pd.api.types.is_numeric_dtype(df_sorted[col])), None)
+
+        if x_col and y_col:
+            fig = px.bar(df_sorted, x=x_col, y=y_col, color=x_col, title=f"{y_col} per {x_col}")
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Chart download
+            img_bytes = fig.to_image(format="png")
+            st.download_button("📸 Download Chart as PNG", img_bytes, file_name="agent_chart.png", mime="image/png")
+
+            # Excel download
+            excel_buffer = BytesIO()
+            df_sorted.to_excel(excel_buffer, index=False)
+            st.download_button("📊 Download Agent Report (Excel)", excel_buffer.getvalue(), file_name="agent_report.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        else:
+            st.warning("⚠️ Could not detect suitable columns for chart.\n"
+                       f"Expected one of {name_columns} for agent names and one of {score_columns} for numeric values.")
 
 except Exception as e:
     st.error(f"⚠️ Error: {e}")
