@@ -20,7 +20,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # Utility functions for session
 @st.cache_data
-
 def load_data(path):
     return pd.read_excel(path)
 
@@ -66,13 +65,13 @@ if not st.session_state.authenticated:
             st.error("❌ Invalid credentials. View-only mode enabled.")
     st.stop()
 
-# UI Config
-st.set_page_config(page_title="📊 Collection BPO Dashboard", layout="wide")
+# UI Title
 st.title("📊 Collection BPO Dashboard")
 
 # Role check
 is_editor = st.session_state.role == "editor"
-# ✅ DEMO CHART
+
+# ✅ DEMO CHART — for testing
 demo_df = pd.DataFrame({
     'Username': ['Amit', 'Pooja', 'Ravi'],
     'Score': [88, 92, 79]
@@ -118,7 +117,6 @@ os.makedirs(process_path, exist_ok=True)
 st.sidebar.markdown(f"### 📁 {selected_process}")
 
 # Helper to save files
-
 def save_uploaded_file(uploaded_file, folder):
     save_path = os.path.join(process_path, folder)
     os.makedirs(save_path, exist_ok=True)
@@ -154,7 +152,6 @@ if is_editor:
         st.experimental_rerun()
 
 # Load and process data
-
 try:
     alloc_file = uploaded_data.get("alloc")
     paid_file = uploaded_data.get("paid")
@@ -164,7 +161,6 @@ try:
         df_alloc = load_data(alloc_file)
         df_paid = load_data(paid_file)
 
-        # Auto correct headers (example: convert to title and strip)
         df_alloc.columns = [col.strip().title() for col in df_alloc.columns]
         df_paid.columns = [col.strip().title() for col in df_paid.columns]
 
@@ -172,7 +168,6 @@ try:
         st.subheader("📌 Merged Allocation & Paid Data")
         st.dataframe(merged)
 
-        # Export merged
         output = BytesIO()
         merged.to_excel(output, index=False)
         st.download_button("📥 Download Merged Report", output.getvalue(), file_name="merged_report.xlsx")
@@ -183,7 +178,6 @@ try:
         st.subheader("🧑‍💼 Agent Performance")
         st.dataframe(df_agent, use_container_width=True)
 
-        # Filter & Sort
         agent_week = st.selectbox("Filter by Week", options=df_agent['Week'].unique())
         df_filtered = df_agent[df_agent['Week'] == agent_week]
 
@@ -191,12 +185,10 @@ try:
         df_sorted = df_filtered.sort_values(by=sort_by, ascending=False)
         st.dataframe(df_sorted, use_container_width=True)
 
-        # Charts
         st.subheader("📊 Agent Performance Chart")
         fig = px.bar(df_sorted, x="Agent Name", y="Total Ca", color="Ranking", title="Total Calls per Agent")
         st.plotly_chart(fig, use_container_width=True)
 
-        # Export Agent
         buffer = BytesIO()
         df_sorted.to_excel(buffer, index=False)
         st.download_button("📥 Download Agent Report", buffer.getvalue(), file_name="agent_report.xlsx")
