@@ -6,6 +6,14 @@ import os
 import time
 from datetime import datetime, timedelta
 import plotly.express as px
+# DEMO: Simple chart using Username and Score (Test only)
+demo_df = pd.DataFrame({
+    'Username': ['Amit', 'Pooja', 'Ravi'],
+    'Score': [88, 92, 79]
+})
+demo_fig = px.bar(demo_df, x='Username', y='Score', title='Demo Agent Scores')
+st.plotly_chart(demo_fig, use_container_width=True)
+
 from io import BytesIO
 
 # Constants
