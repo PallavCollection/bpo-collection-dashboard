@@ -8,6 +8,15 @@ from datetime import datetime, timedelta
 import plotly.express as px
 from io import BytesIO
 
+# ✅ DEMO: Simple chart using Username and Score (Test only)
+demo_df = pd.DataFrame({
+    'Username': ['Amit', 'Pooja', 'Ravi'],
+    'Score': [88, 92, 79]
+})
+demo_fig = px.bar(demo_df, x='Username', y='Score', title='Demo Agent Scores')
+st.plotly_chart(demo_fig, use_container_width=True)
+
+
 # Constants
 ADMIN_EMAIL = "jjagarbattiudyog@gmail.com"
 ADMIN_PASSWORD = "Sanu@1998"
@@ -187,13 +196,6 @@ try:
         st.subheader("📊 Agent Performance Chart")
         fig = px.bar(df_sorted, x="Agent Name", y="Total Ca", color="Ranking", title="Total Calls per Agent")
         st.plotly_chart(fig, use_container_width=True)
-# DEMO: Simple chart using Username and Score (Test only)
-demo_df = pd.DataFrame({
-    'Username': ['Amit', 'Pooja', 'Ravi'],
-    'Score': [88, 92, 79]
-})
-demo_fig = px.bar(demo_df, x='Username', y='Score', title='Demo Agent Scores')
-st.plotly_chart(demo_fig, use_container_width=True)
 
         # Export Agent
         buffer = BytesIO()
