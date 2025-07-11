@@ -1,5 +1,3 @@
-# full_collection_dashboard.py
-
 import streamlit as st
 import pandas as pd
 import os
@@ -8,7 +6,10 @@ from datetime import datetime, timedelta
 import plotly.express as px
 from io import BytesIO
 
-# ✅ DEMO: Simple chart using Username and Score (Test only)
+# ✅ MUST be the first Streamlit command
+st.set_page_config(page_title="📊 Collection BPO Dashboard", layout="wide")
+
+# ✅ DEMO CHART (Optional)
 demo_df = pd.DataFrame({
     'Username': ['Amit', 'Pooja', 'Ravi'],
     'Score': [88, 92, 79]
@@ -16,6 +17,7 @@ demo_df = pd.DataFrame({
 demo_fig = px.bar(demo_df, x='Username', y='Score', title='Demo Agent Scores')
 st.plotly_chart(demo_fig, use_container_width=True)
 
+# Continue with the rest of the script...
 
 # Constants
 ADMIN_EMAIL = "jjagarbattiudyog@gmail.com"
